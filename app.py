@@ -8,34 +8,46 @@ import datetime
 from data_handler import load_file, preprocess_data, get_usage_snapshots
 from tou_analyzer import apply_tou_and_anomaly, get_color
 
-st.set_page_config(page_title="โปรแกรมวิเคราะห์ข้อมูลไฟฟ้า", layout="wide")
-st.title("📊 โปรแกรมวิเคราะห์ข้อมูลไฟฟ้า (Custom TOU & Holiday)")
+st.set_page_config(page_title="Load Profile & TOU Simulator (ระบบวิเคราะห์โหลดและจำลองค่าไฟ TOU)", page_icon="⚡", layout="wide")
 
-# --- Sidebar: TOU Settings ---
-st.sidebar.header("🛠️ ตั้งค่า TOU & วันหยุด")
+# ปรับแต่ง CSS เล็กน้อยเพื่อซ่อนเมนูที่ไม่จำเป็นและทำให้ UI คลีนขึ้น
+st.markdown("""
+    <style>
+        .block-container { padding-top: 2rem; padding-bottom: 2rem; }
+        div[data-testid="stMetricValue"] { font-size: 1.8rem; color: #1d3557; }
+        .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+        .stTabs [data-baseweb="tab"] { border-radius: 4px 4px 0px 0px; padding: 10px 16px; }
+    </style>
+""", unsafe_allow_html=True)
 
-with st.sidebar.expander("ตั้งค่าราคา (บาท/หน่วย)", expanded=True):
-    p_rate = st.number_input("เรท On-Peak", value=5.7982, format="%.4f")
-    op_rate = st.number_input("เรท Off-Peak / Holiday", value=2.6369, format="%.4f")
+# ==========================================
+# 🎛️ SIDEBAR: Controls & Upload
+# ==========================================
+with st.sidebar:
+    st.header("🛠️ ตั้งค่า TOU & วันหยุด")
 
-with st.sidebar.expander("ตั้งค่าเวลา On-Peak", expanded=True):
-    p_start = st.time_input("เริ่ม On-Peak", value=datetime.time(9, 0))
-    p_end = st.time_input("สิ้นสุด On-Peak", value=datetime.time(22, 0))
+    with st.sidebar.expander("ตั้งค่าราคา (บาท/หน่วย)", expanded=True):
+        p_rate = st.number_input("เรท On-Peak", value=5.7982, format="%.4f")
+        op_rate = st.number_input("เรท Off-Peak / Holiday", value=2.6369, format="%.4f")
 
-with st.sidebar.expander("ตั้งค่าวันหยุด (Holiday)", expanded=True):
-    st.caption("พิมพ์วันที่ (YYYY-MM-DD) ขั้นด้วยลูกน้ำ(,) หรือขึ้นบรรทัดใหม่")
-    default_holidays = "2026-01-01, 2026-03-02, 2026-04-06, 2026-04-13, 2026-04-14, 2026-04-15, 2026-05-01, 2026-05-04, 2026-06-03, 2026-07-28, 2026-07-29, 2026-07-30, 2026-08-12, 2026-10-13, 2026-10-23, 2026-12-10, 2026-12-31"
-    holiday_input = st.text_area("รายการวันหยุด:", value=default_holidays, height=150)
-    holiday_list = [x.strip() for x in holiday_input.replace('\n', ',').split(',') if x.strip()]
+    with st.sidebar.expander("ตั้งค่าเวลา On-Peak", expanded=True):
+        p_start = st.time_input("เริ่ม On-Peak", value=datetime.time(9, 0))
+        p_end = st.time_input("สิ้นสุด On-Peak", value=datetime.time(22, 0))
 
-st.sidebar.divider()
-st.sidebar.header("⚙️ การแสดงผลและวิเคราะห์")
-sensitivity = st.sidebar.slider("ระดับความไว Anomaly", 1.0, 5.0, 2.5, 0.5)
-chart_type = st.sidebar.radio("เลือกรูปแบบกราฟ:", ["กราฟแท่ง (Bar)", "กราฟเส้น (Line)"])
-is_bar = "แท่ง" in chart_type
+    with st.sidebar.expander("ตั้งค่าวันหยุด (Holiday)", expanded=True):
+        st.caption("พิมพ์วันที่ (YYYY-MM-DD) คั่นด้วยลูกน้ำ(,)")
+        default_holidays = "2026-01-01, 2026-03-02, 2026-04-06, 2026-04-13, 2026-04-14, 2026-04-15, 2026-05-01, 2026-05-04, 2026-06-03, 2026-07-28, 2026-07-29, 2026-07-30, 2026-08-12, 2026-10-13, 2026-10-23, 2026-12-10, 2026-12-31"
+        holiday_input = st.text_area("รายการวันหยุด:", value=default_holidays, height=150)
+        holiday_list = [x.strip() for x in holiday_input.replace('\n', ',').split(',') if x.strip()]
 
-st.sidebar.divider()
-uploaded_files = st.sidebar.file_uploader("📂 อัปโหลดไฟล์ข้อมูล (เลือกได้หลายไฟล์)", type=['csv', 'xlsx', 'xls', 'txt'], accept_multiple_files=True)
+    st.sidebar.divider()
+    st.sidebar.header("⚙️ การแสดงผลและวิเคราะห์")
+    sensitivity = st.sidebar.slider("ระดับความไว Anomaly", 1.0, 5.0, 2.5, 0.5)
+    chart_type = st.sidebar.radio("เลือกรูปแบบกราฟ:", ["กราฟแท่ง (Bar)", "กราฟเส้น (Line)"])
+    is_bar = "แท่ง" in chart_type
+
+    st.sidebar.divider()
+    uploaded_files = st.sidebar.file_uploader("📂 อัปโหลดไฟล์ข้อมูล (เลือกได้หลายไฟล์)", type=['csv', 'xlsx', 'xls', 'txt'], accept_multiple_files=True)
 
 if uploaded_files:
     with st.spinner('กำลังโหลด ประมวลผล และเชื่อมต่อข้อมูลจากทุกไฟล์...'):
@@ -106,26 +118,36 @@ if uploaded_files:
                     st.plotly_chart(fig_all, use_container_width=True)
                     if is_bar: st.info("💡 สีส้ม = On-Peak | สีเขียว = Off-Peak (กลางคืน/เสาร์-อาทิตย์) | สีเหลือง = Holiday (วันหยุดราชการ)")
                     
-                    st.subheader("พลังงานไฟฟ้าสะสม (Cumulative kWh)")
-                    fig_cumsum = go.Figure()
-                    fig_cumsum.add_trace(go.Bar(x=df_display['Clock'], y=df_display['Cumulative_kWh_Total'], marker_color="#457b9d"))
-                    fig_cumsum.update_layout(height=350, template="plotly_white", hovermode="x unified")
-                    st.plotly_chart(fig_cumsum, use_container_width=True)
+                    # 🔥 แก้ไขจุดที่ 1: เปลี่ยนจากพลังงานสะสม เป็น ความต้องการพลังงานไฟฟ้า (kW) แบบไม่สะสม
+                    st.subheader("ความต้องการพลังงานไฟฟ้า (kW) แบบไม่สะสม")
+                    fig_kw_each = go.Figure()
+                    fig_kw_each.add_trace(go.Bar(x=df_display['Clock'], y=df_display['kW_Import'], marker_color="#457b9d", name="kW"))
+                    fig_kw_each.update_layout(height=350, template="plotly_white", hovermode="x unified")
+                    st.plotly_chart(fig_kw_each, use_container_width=True)
 
                 with tab2:
                     available_dates = sorted(df_display['Date'].unique())
                     if available_dates:
                         sel_date = st.selectbox("📅 เลือกวันที่ต้องการเจาะลึก", available_dates)
                         day_df = df_display[df_display['Date'] == sel_date].copy()
-                        day_df['Cumulative_kWh_Daily'] = day_df['kWh_15min'].cumsum()
 
                         st.markdown(f"#### 📊 สรุปสัดส่วนการใช้พลังงานประจำวันที่ {sel_date}")
-                        summary_daily = day_df.groupby('Period_Detail')[['kW_Import', 'Cost_THB']].sum().reset_index()
-                        summary_daily.columns = ['สถานะ (Period)', 'พลังงานรวมที่ใช้ (kW)', 'ค่าไฟฟ้า (บาท)']
-                        st.dataframe(summary_daily, use_container_width=True)
+                        
+                        # 🔥 แก้ไขจุดที่ 2: เพิ่มกล่อง Metric โชว์โหลดรวม (Sum kW) เคียงคู่ไปกับตัวอื่น
+                        m_col1, m_col2, m_col3 = st.columns(3)
+                        m_col1.metric("โหลดรวมประจำวัน (Sum kW)", f"{day_df['kW_Import'].sum():,.2f} kW")
+                        m_col2.metric("พลังงานรวมประจำวัน (Total kWh)", f"{day_df['kWh_15min'].sum():,.2f} kWh")
+                        m_col3.metric("ค่าไฟฟ้าประจำวัน", f"฿ {day_df['Cost_THB'].sum():,.2f}")
+                        
+                        st.write("")
+                        # เพิ่มคอลัมน์แสดงผลในตารางกลุ่มสัดส่วนให้มีครบทั้ง kW และ kWh
+                        summary_daily = day_df.groupby('Period_Detail')[['kW_Import', 'kWh_15min', 'Cost_THB']].sum().reset_index()
+                        summary_daily.columns = ['สถานะ (Period)', 'โหลดรวม (kW)', 'พลังงานรวม (kWh)', 'ค่าไฟฟ้า (บาท)']
+                        st.dataframe(summary_daily, use_container_width=True, hide_index=True)
 
+                        # 🔥 แก้ไขจุดที่ 3: ปรับ Subplot แถวที่ 2 จากพลังงานสะสมรายวัน เป็น พลังงานราย 15 นาที (kWh) แบบไม่สะสม
                         fig_15min = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.05, 
-                                                  subplot_titles=("พลังงาน (kW)", "พลังงานสะสมรายวัน (kWh)", "แรงดันไฟฟ้า (V)", "ประมาณการค่าไฟฟ้าราย 15 นาที (THB)"))
+                                                  subplot_titles=("พลังงาน (kW)", "พลังงานราย 15 นาที (kWh) *ไม่สะสม", "แรงดันไฟฟ้า (V)", "ประมาณการค่าไฟฟ้าราย 15 นาที (THB)"))
                         
                         day_colors = day_df['Period_Detail'].apply(get_color)
                         if is_bar:
@@ -133,12 +155,17 @@ if uploaded_files:
                         else:
                             fig_15min.add_trace(go.Scatter(x=day_df['Clock'], y=day_df['kW_Import'], mode='lines', fill='tozeroy', line=dict(color="#f4a261", width=2), name="kW"), row=1, col=1)
                             
-                        fig_15min.add_trace(go.Bar(x=day_df['Clock'], y=day_df['Cumulative_kWh_Daily'], marker_color="#2a9d8f", name="kWh"), row=2, col=1)
+                        # ใช้ day_df['kWh_15min'] ตรงๆ ไม่ใช้ .cumsum() เพื่อให้ไม่สะสม
+                        fig_15min.add_trace(go.Bar(x=day_df['Clock'], y=day_df['kWh_15min'], marker_color="#2a9d8f", name="kWh"), row=2, col=1)
                         fig_15min.add_trace(go.Bar(x=day_df['Clock'], y=day_df['Voltage'], marker_color="#e63946", name="Volt"), row=3, col=1)
                         fig_15min.add_trace(go.Bar(x=day_df['Clock'], y=day_df['Cost_THB'], marker_color="#8338ec", name="THB"), row=4, col=1)
                         
                         fig_15min.update_layout(height=900, template="plotly_white", hovermode="x unified", showlegend=False)
                         st.plotly_chart(fig_15min, use_container_width=True)
+
+                        # 🔥 เพิ่มตารางข้อมูลดิบประจำวันที่มีทั้งหน่วย kW และ kWh ครบถ้วน
+                        st.markdown(f"#### 📋 ตารางข้อมูลดิบประจำวันที่ {sel_date}")
+                        st.dataframe(day_df[['Clock', 'kW_Import', 'kWh_15min', 'Voltage', 'Period_Detail', 'Rate_THB', 'Cost_THB', 'Anomaly_Type']].reset_index(drop=True), use_container_width=True)
 
                 with tab3:
                     st.subheader("🔄 ระบบจำลองการเลื่อนช่วงเวลาและเปรียบเทียบ")
@@ -204,7 +231,6 @@ if uploaded_files:
                         st.markdown(f"#### 🏷️ รวมค่าไฟเบื้องต้น: {orig_cost:,.2f} บาท")
                         st.markdown(f"#### ⚡ พลังงานรวมทั้งหมด: {df_summary['kW_Import'].sum():,.2f} kW")
                         
-                        # 🔥 บังคับแสดงผลทั้ง 3 ช่วงเวลาเสมอ แม้ว่าข้อมูลจะเป็น 0
                         summary_dict = cost_summary.set_index('Period_Detail').to_dict('index')
                         
                         p_data = summary_dict.get('On-Peak', {'kW_Import': 0.0, 'Cost_THB': 0.0})
@@ -248,7 +274,6 @@ if uploaded_files:
                             else:
                                 st.info("⚖️ **ค่าไฟเท่าเดิม ไม่เปลี่ยนแปลง**")
                             
-                            # 🔥 บังคับแสดงผลทั้ง 3 ช่วงเวลาในการจำลองเสมอ แม้ว่าข้อมูลจะเป็น 0
                             sim_cost_summary = df_sim.groupby('Period_Detail')[['kW_Import', 'Cost_THB']].sum().reset_index()
                             sim_dict = sim_cost_summary.set_index('Period_Detail').to_dict('index')
                             
