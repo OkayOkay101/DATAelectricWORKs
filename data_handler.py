@@ -4,13 +4,14 @@ import io
 
 def parse_text_lines(lines, delimiter=','):
     header_row_idx = -1
-    # 1. ค้นหาบรรทัดที่เป็นหัวตาราง
+    # 1. ค้นหาบรรทัดที่เป็นหัวตาราง (เพิ่มเงื่อนไข 'time' และ 'active power+')
     for i, line in enumerate(lines[:50]):
         l_lower = line.lower()
         if ('clock' in l_lower and 'import' in l_lower) or \
            ('ch1' in l_lower and 'ch4' in l_lower) or \
            ('date' in l_lower and 'clock' in l_lower) or \
-           ('pea no' in l_lower and 'clock' in l_lower):
+           ('pea no' in l_lower and 'clock' in l_lower) or \
+           ('time' in l_lower and 'active power+' in l_lower):
             header_row_idx = i
             # ตรวจจับ Tab
             if '\t' in line and ',' not in line:
@@ -31,13 +32,13 @@ def parse_text_lines(lines, delimiter=','):
     else:
         cols = [c.strip().lower() for c in header_line.split(delimiter)]
         
-    # 2. ค้นหา Index (ตำแหน่ง) ของคอลัมน์ที่ต้องการ
+    # 2. ค้นหา Index (ตำแหน่ง) ของคอลัมน์ที่ต้องการ (เพิ่มเงื่อนไข 'time' และ 'activepower+')
     date_idx, clock_idx, kw_idx, v_idx = -1, -1, -1, -1
     for i, c in enumerate(cols):
         c_clean = c.replace(' ', '').replace('.', '').replace('_', '')
         if c_clean == 'date': date_idx = i
-        elif 'clock' in c_clean or 'ch1' == c_clean: clock_idx = i
-        elif ('import' in c_clean and 'kw' in c_clean) or 'ch4' == c_clean: kw_idx = i
+        elif 'clock' in c_clean or 'ch1' == c_clean or 'time' in c_clean: clock_idx = i
+        elif ('import' in c_clean and 'kw' in c_clean) or 'ch4' == c_clean or 'activepower+' in c_clean: kw_idx = i
         elif 'voltage' in c_clean or 'ch3' == c_clean: v_idx = i
         
     if clock_idx == -1 or kw_idx == -1:
@@ -84,14 +85,15 @@ def parse_text_lines(lines, delimiter=','):
     return pd.DataFrame(data_rows, columns=['Clock', 'kW_Import', 'Voltage'])
 
 def parse_excel_df(df_raw):
-    """สำหรับอ่านไฟล์ Excel .xlsx ของแท้"""
+    """สำหรับอ่านไฟล์ Excel .xlsx ของแท้ หรือรับต่อจาก pd.read_csv()"""
     header_row_idx = -1
     for i in range(min(50, len(df_raw))):
         row_str = ' '.join(df_raw.iloc[i].fillna('').astype(str)).lower()
         if ('clock' in row_str and 'import' in row_str) or \
            ('ch1' in row_str and 'ch4' in row_str) or \
            ('date' in row_str and 'clock' in row_str) or \
-           ('pea no' in row_str and 'clock' in row_str):
+           ('pea no' in row_str and 'clock' in row_str) or \
+           ('time' in row_str and 'active power+' in row_str):
             header_row_idx = i
             break
             
@@ -106,19 +108,23 @@ def parse_excel_df(df_raw):
     for c in df.columns:
         c_clean = c.replace(' ', '').replace('.', '').replace('_', '')
         if c_clean == 'date': date_col = c
-        elif 'clock' in c_clean or 'ch1' == c_clean: clock_col = c
-        elif ('import' in c_clean and 'kw' in c_clean) or 'ch4' == c_clean: kw_col = c
+        elif 'clock' in c_clean or 'ch1' == c_clean or 'time' in c_clean: clock_col = c
+        elif ('import' in c_clean and 'kw' in c_clean) or 'ch4' == c_clean or 'activepower+' in c_clean: kw_col = c
         elif 'voltage' in c_clean or 'ch3' == c_clean: v_col = c
         
     if not clock_col or not kw_col:
         return None
         
+    invalid_vals = ['total', 'p', 'op', 'h', 'kwh', 'nan', '']
+    
     if date_col:
-        invalid_vals = ['total', 'p', 'op', 'h', 'kwh', 'nan', '']
         mask = df[date_col].astype(str).str.strip().str.lower().isin(invalid_vals)
         df = df[~mask]
         df['Merged_Clock'] = df[date_col].astype(str).str.strip() + ' ' + df[clock_col].astype(str).str.strip()
         clock_col = 'Merged_Clock'
+    else:
+        mask = df[clock_col].astype(str).str.strip().str.lower().isin(invalid_vals)
+        df = df[~mask]
         
     out_df = pd.DataFrame()
     out_df['Clock'] = df[clock_col]
@@ -131,19 +137,31 @@ def load_file(uploaded_file, file_ext):
     bytes_data = uploaded_file.getvalue()
     df_result = None
     
-    # ลองสกัดข้อมูลจากการอ่านเป็นบรรทัดก่อน (แก้ปัญหาไฟล์ตารางเบี้ยวได้อย่างเด็ดขาด)
-    try:
+    # 1. ลองใช้ Pandas อ่านแบบ CSV ก่อนเลย (แก้ปัญหาไฟล์ที่มี Newline ในช่องตาราง เช่น "\n" ระหว่างบรรทัดได้อย่างสมบูรณ์)
+    if df_result is None:
         try:
-            string_data = bytes_data.decode("utf-8-sig")
-        except:
-            string_data = bytes_data.decode("cp874", errors='ignore')
+            try:
+                df_raw = pd.read_csv(io.BytesIO(bytes_data), encoding='utf-8-sig', header=None, on_bad_lines='skip')
+            except:
+                df_raw = pd.read_csv(io.BytesIO(bytes_data), encoding='cp874', header=None, on_bad_lines='skip')
+            df_result = parse_excel_df(df_raw)
+        except Exception:
+            pass
             
-        lines = string_data.splitlines()
-        df_result = parse_text_lines(lines, delimiter=',')
-    except Exception:
-        pass
-        
-    # หากสกัดแบบบรรทัดล้มเหลว (เช่นเป็นไฟล์ .xlsx Binary) ค่อยอ่านแบบ Excel
+    # 2. ลองสกัดข้อมูลจากการอ่านเป็นบรรทัด (แก้ปัญหาไฟล์ตารางเบี้ยวได้อย่างเด็ดขาด)
+    if df_result is None:
+        try:
+            try:
+                string_data = bytes_data.decode("utf-8-sig")
+            except:
+                string_data = bytes_data.decode("cp874", errors='ignore')
+                
+            lines = string_data.splitlines()
+            df_result = parse_text_lines(lines, delimiter=',')
+        except Exception:
+            pass
+            
+    # 3. หากสกัดแบบบรรทัดล้มเหลว (เช่นเป็นไฟล์ .xlsx Binary) ค่อยอ่านแบบ Excel
     if df_result is None and file_ext in ['xlsx', 'xls']:
         try:
             engine = 'openpyxl' if file_ext == 'xlsx' else 'xlrd'
