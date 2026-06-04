@@ -155,12 +155,70 @@ with tab1:
     fig_kw_each.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20), template="plotly_white", hovermode="x unified")
     st.plotly_chart(fig_kw_each, use_container_width=True)
 
-    st.subheader("พลังงานไฟฟ้า (kWh)")
+    st.subheader("พลังงานไฟฟ้า (kWh) ราย 15 นาที")
     fig_kwh_each = go.Figure()
     fig_kwh_each.add_trace(go.Bar(x=df_display['Clock'], y=df_display['kWh_15min'], marker_color="#2a9d8f", name="kWh"))
     fig_kwh_each.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20), template="plotly_white", hovermode="x unified")
     st.plotly_chart(fig_kwh_each, use_container_width=True)
 
+    # ========================================================
+    # ✨ ส่วนที่ 1: กราฟพลังงานไฟฟ้ารวมรายวัน (Daily Total kWh)
+    # ========================================================
+    st.subheader("📊 กราฟพลังงานไฟฟ้ารวมรายวัน (Daily Total kWh)")
+    
+    # คำนวณผลรวม kWh รายวัน
+    df_daily_kwh = df_display.groupby('Date')['kWh_15min'].sum().reset_index()
+    max_kwh = df_daily_kwh['kWh_15min'].max()
+    
+    fig_daily_kwh = go.Figure()
+    fig_daily_kwh.add_trace(go.Bar(
+        x=df_daily_kwh['Date'], 
+        y=df_daily_kwh['kWh_15min'], 
+        marker_color="#e76f51", 
+        name="Total kWh/Day",
+        text=df_daily_kwh['kWh_15min'].map('{:,.1f}'.format), # ทศนิยม 1 ตำแหน่ง
+        textposition='outside', # ไว้บนแท่งกราฟ
+        textfont=dict(size=14, color="#1d3557", family="Arial") 
+    ))
+    
+    fig_daily_kwh.update_layout(
+        height=400, 
+        margin=dict(l=20, r=20, t=40, b=20), 
+        template="plotly_white", 
+        hovermode="x unified",
+        xaxis=dict(type='category'),
+        yaxis=dict(range=[0, max_kwh * 1.15]) # เผื่อพื้นที่ด้านบนให้ตัวเลข
+    )
+    
+    fig_daily_kwh.update_yaxes(showgrid=True, gridcolor='lightgrey', griddash='dot')
+    st.plotly_chart(fig_daily_kwh, use_container_width=True)
+
+    # ========================================================
+    # ✨ ส่วนที่ 2: ตารางพลังงานไฟฟ้ารวมรายวัน (สำหรับ Copy)
+    # ========================================================
+    st.subheader("📋 ตารางพลังงานไฟฟ้ารวมรายวัน (Daily Total kWh)")
+    
+    # สร้าง Dataframe ใหม่สำหรับแสดงผลตารางเพื่อไม่ให้กระทบกราฟ
+    df_daily_table = df_daily_kwh.copy()
+    df_daily_table.columns = ['วันที่ (Date)', 'พลังงานรวม (Total kWh)']
+    
+    st.dataframe(
+        df_daily_table,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "วันที่ (Date)": st.column_config.DateColumn(
+                "วันที่ (Date)"
+            ),
+            "พลังงานรวม (Total kWh)": st.column_config.NumberColumn(
+                "พลังงานรวม (Total kWh)",
+                help="คลิกที่ชื่อคอลัมน์เพื่อเรียงลำดับจากมากไปน้อย",
+                format="%.2f"
+            )
+        }
+    )
+    st.caption("💡 **Tip:** กดคลิกที่เซลล์ในตาราง แล้วกด `Ctrl+A` -> `Ctrl+C` เพื่อก๊อปปี้ข้อมูลไปวางใน Excel ได้เลย หรือคลิกที่หัวตารางเพื่อเรียงลำดับข้อมูล")
+    
 # ------------------------------------------
 # TAB 2: เจาะลึกรายวัน
 # ------------------------------------------
