@@ -198,7 +198,6 @@ with tab1:
     # ========================================================
     st.subheader("📋 ตารางพลังงานไฟฟ้ารวมรายวัน (Daily Total kWh)")
     
-    # สร้าง Dataframe ใหม่สำหรับแสดงผลตารางเพื่อไม่ให้กระทบกราฟ
     df_daily_table = df_daily_kwh.copy()
     df_daily_table.columns = ['วันที่ (Date)', 'พลังงานรวม (Total kWh)']
     
@@ -249,7 +248,11 @@ with tab2:
         else: fig_15min.add_trace(go.Scatter(x=day_df['Clock'], y=day_df['kW_Import'], mode='lines', fill='tozeroy', line=dict(color="#f4a261", width=2), name="kW"), row=1, col=1)
             
         fig_15min.add_trace(go.Bar(x=day_df['Clock'], y=day_df['kWh_15min'], marker_color="#2a9d8f", name="kWh"), row=2, col=1)
+        
+        # 🔥 ส่วนที่แก้ไข: ปรับกราฟแรงดันไฟฟ้ากลับเป็นกราฟแท่ง (Bar) และรักษาการซูม Y-axis เพื่อให้เห็นความต่าง
         fig_15min.add_trace(go.Bar(x=day_df['Clock'], y=day_df['Voltage'], marker_color="#e63946", name="Volt"), row=3, col=1)
+        fig_15min.update_yaxes(range=[day_df['Voltage'].min() - 5, day_df['Voltage'].max() + 5], row=3, col=1)
+        
         fig_15min.add_trace(go.Bar(x=day_df['Clock'], y=day_df['Cost_THB'], marker_color="#8338ec", name="THB"), row=4, col=1)
         
         fig_15min.update_layout(height=900, template="plotly_white", hovermode="x unified", showlegend=False, margin=dict(l=20, r=20, t=40, b=20))
