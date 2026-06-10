@@ -32,12 +32,21 @@ with st.sidebar:
     
     st.divider()
     
-    st.header("⚙️ 2. ตั้งค่าระบบ TOU")
+    # 🔥 ปรับปรุงเพิ่มตัวเลือกประเภทการคิดค่าไฟ
+    st.header("⚙️ 2. ตั้งค่าระบบคิดเงิน")
+    rate_type = st.radio("ประเภทอัตราค่าไฟ:", ["TOU (Time of Use)", "อัตราเดียว (Single Rate)"], horizontal=True)
+    
     with st.expander("💰 ตั้งค่าเรทราคา (บาท/หน่วย)", expanded=True):
-        p_rate = st.number_input("เรท On-Peak", value=5.7982, format="%.4f")
-        op_rate = st.number_input("เรท Off-Peak / Holiday", value=2.6369, format="%.4f")
+        if rate_type == "TOU (Time of Use)":
+            p_rate = st.number_input("เรท On-Peak", value=5.7982, format="%.4f")
+            op_rate = st.number_input("เรท Off-Peak / Holiday", value=2.6369, format="%.4f")
+            single_rate = None
+        else:
+            single_rate = st.number_input("เรทค่าไฟอัตราเดียว", value=4.5000, format="%.4f")
+            p_rate = single_rate
+            op_rate = single_rate
 
-    with st.expander("⏰ ตั้งค่าเวลา On-Peak", expanded=True):
+    with st.expander("⏰ ตั้งค่าเวลา On-Peak (สำหรับ TOU)", expanded=False):
         p_start = st.time_input("เวลาเริ่ม On-Peak", value=datetime.time(9, 0))
         p_end = st.time_input("เวลาสิ้นสุด On-Peak", value=datetime.time(22, 0))
 
@@ -57,7 +66,7 @@ with st.sidebar:
 # ==========================================
 # 🖥️ MAIN DASHBOARD AREA
 # ==========================================
-st.title("⚡ Load Profile & TOU Simulator \n(ระบบวิเคราะห์โหลดและจำลองค่าไฟ TOU)")
+st.title("⚡ Load Profile & Simulator \n(ระบบวิเคราะห์โหลดและจำลองค่าไฟ)")
 
 # --- Welcome Screen (Empty State) ---
 if not uploaded_files:
@@ -66,7 +75,7 @@ if not uploaded_files:
     with col1:
         st.info("#### 📂 1. อัปโหลดไฟล์\nอัปโหลดไฟล์ Load Profile (.xls, .csv, .txt) ที่เมนูด้านซ้ายมือ สามารถเลือกหลายไฟล์พร้อมกันได้")
     with col2:
-        st.warning("#### ⚙️ 2. ตรวจสอบตั้งค่า\nเช็คเรทราคาค่าไฟ TOU และช่วงเวลา On-Peak / Off-Peak ให้ตรงกับบิลค่าไฟของคุณ")
+        st.warning("#### ⚙️ 2. ตรวจสอบตั้งค่า\nเลือกระบบค่าไฟ (TOU หรือ อัตราเดียว) และตรวจสอบเรทราคาให้ตรงกับบิลค่าไฟของคุณ")
     with col3:
         st.success("#### 📊 3. วิเคราะห์ผล\nดูแนวโน้มการใช้พลังงาน และทดลอง 'จำลองเลื่อนเวลา' เพื่อดูพฤติกรรมโหลดที่เปลี่ยนไป")
     st.stop()
@@ -134,7 +143,7 @@ with tab1:
     colors = df_display['Period_Detail'].apply(get_color)
     
     if is_bar:
-        fig_all.add_trace(go.Bar(x=df_display['Clock'], y=df_display['kW_Import'], marker_color=colors, name="kW (แยกสี TOU/Holiday)"))
+        fig_all.add_trace(go.Bar(x=df_display['Clock'], y=df_display['kW_Import'], marker_color=colors, name="kW (แยกสีช่วงเวลา)"))
     else:
         fig_all.add_trace(go.Scatter(x=df_display['Clock'], y=df_display['kW_Import'], mode='lines', fill='tozeroy', line=dict(color="#1d3557", width=2), name="kW (ภาพรวม)"))
     
@@ -147,7 +156,10 @@ with tab1:
 
     fig_all.update_layout(height=400, margin=dict(l=20, r=20, t=40, b=20), template="plotly_white", hovermode="x unified")
     st.plotly_chart(fig_all, use_container_width=True)
-    st.info("💡 สีส้ม = On-Peak | สีเขียว = Off-Peak (กลางคืน/เสาร์-อาทิตย์) | สีเหลือง = Holiday (วันหยุดราชการ)")
+    if rate_type == "TOU (Time of Use)":
+        st.info("💡 สีส้ม = On-Peak | สีเขียว = Off-Peak (กลางคืน/เสาร์-อาทิตย์) | สีเหลือง = Holiday (วันหยุดราชการ)")
+    else:
+        st.info("💡 สีส้ม = เวลากลางวัน (09:00-22:00) | สีเขียว/เหลือง = เวลากลางคืนและวันหยุด (อ้างอิงช่วงเวลาเพื่อดูพฤติกรรม)")
     
     st.subheader("ความต้องการพลังงานไฟฟ้า (kW)")
     fig_kw_each = go.Figure()
@@ -161,12 +173,7 @@ with tab1:
     fig_kwh_each.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20), template="plotly_white", hovermode="x unified")
     st.plotly_chart(fig_kwh_each, use_container_width=True)
 
-    # ========================================================
-    # ✨ ส่วนที่ 1: กราฟพลังงานไฟฟ้ารวมรายวัน (Daily Total kWh)
-    # ========================================================
     st.subheader("📊 กราฟพลังงานไฟฟ้ารวมรายวัน (Daily Total kWh)")
-    
-    # คำนวณผลรวม kWh รายวัน
     df_daily_kwh = df_display.groupby('Date')['kWh_15min'].sum().reset_index()
     max_kwh = df_daily_kwh['kWh_15min'].max()
     
@@ -176,28 +183,15 @@ with tab1:
         y=df_daily_kwh['kWh_15min'], 
         marker_color="#e76f51", 
         name="Total kWh/Day",
-        text=df_daily_kwh['kWh_15min'].map('{:,.1f}'.format), # ทศนิยม 1 ตำแหน่ง
-        textposition='outside', # ไว้บนแท่งกราฟ
+        text=df_daily_kwh['kWh_15min'].map('{:,.1f}'.format), 
+        textposition='outside', 
         textfont=dict(size=14, color="#1d3557", family="Arial") 
     ))
-    
-    fig_daily_kwh.update_layout(
-        height=400, 
-        margin=dict(l=20, r=20, t=40, b=20), 
-        template="plotly_white", 
-        hovermode="x unified",
-        xaxis=dict(type='category'),
-        yaxis=dict(range=[0, max_kwh * 1.15]) # เผื่อพื้นที่ด้านบนให้ตัวเลข
-    )
-    
+    fig_daily_kwh.update_layout(height=400, margin=dict(l=20, r=20, t=40, b=20), template="plotly_white", hovermode="x unified", xaxis=dict(type='category'), yaxis=dict(range=[0, max_kwh * 1.15]))
     fig_daily_kwh.update_yaxes(showgrid=True, gridcolor='lightgrey', griddash='dot')
     st.plotly_chart(fig_daily_kwh, use_container_width=True)
 
-    # ========================================================
-    # ✨ ส่วนที่ 2: ตารางพลังงานไฟฟ้ารวมรายวัน (สำหรับ Copy)
-    # ========================================================
     st.subheader("📋 ตารางพลังงานไฟฟ้ารวมรายวัน (Daily Total kWh)")
-    
     df_daily_table = df_daily_kwh.copy()
     df_daily_table.columns = ['วันที่ (Date)', 'พลังงานรวม (Total kWh)']
     
@@ -206,17 +200,10 @@ with tab1:
         use_container_width=True,
         hide_index=True,
         column_config={
-            "วันที่ (Date)": st.column_config.DateColumn(
-                "วันที่ (Date)"
-            ),
-            "พลังงานรวม (Total kWh)": st.column_config.NumberColumn(
-                "พลังงานรวม (Total kWh)",
-                help="คลิกที่ชื่อคอลัมน์เพื่อเรียงลำดับจากมากไปน้อย",
-                format="%.2f"
-            )
+            "วันที่ (Date)": st.column_config.DateColumn("วันที่ (Date)"),
+            "พลังงานรวม (Total kWh)": st.column_config.NumberColumn("พลังงานรวม (Total kWh)", help="คลิกที่ชื่อคอลัมน์เพื่อเรียงลำดับจากมากไปน้อย", format="%.2f")
         }
     )
-    st.caption("💡 **Tip:** กดคลิกที่เซลล์ในตาราง แล้วกด `Ctrl+A` -> `Ctrl+C` เพื่อก๊อปปี้ข้อมูลไปวางใน Excel ได้เลย หรือคลิกที่หัวตารางเพื่อเรียงลำดับข้อมูล")
     
 # ------------------------------------------
 # TAB 2: เจาะลึกรายวัน
@@ -249,7 +236,6 @@ with tab2:
             
         fig_15min.add_trace(go.Bar(x=day_df['Clock'], y=day_df['kWh_15min'], marker_color="#2a9d8f", name="kWh"), row=2, col=1)
         
-        # 🔥 ส่วนที่แก้ไข: ปรับกราฟแรงดันไฟฟ้ากลับเป็นกราฟแท่ง (Bar) และรักษาการซูม Y-axis เพื่อให้เห็นความต่าง
         fig_15min.add_trace(go.Bar(x=day_df['Clock'], y=day_df['Voltage'], marker_color="#e63946", name="Volt"), row=3, col=1)
         fig_15min.update_yaxes(range=[day_df['Voltage'].min() - 5, day_df['Voltage'].max() + 5], row=3, col=1)
         
@@ -319,23 +305,29 @@ with tab4:
         c3.metric("ค่าไฟฟ้าประเมิน", f"฿ {orig_cost:,.2f}")
         c4.metric("จุดผิดปกติ (Anomaly)", f"{len(df_summary[df_summary['Anomaly_Type'] != 'ปกติ'])} จุด")
 
-        st.markdown("##### 🧾 แยกค่าใช้จ่ายตามช่วงเวลา (TOU)")
-        cost_summary = df_summary.groupby('Period_Detail')[['kW_Import', 'Cost_THB']].sum().reset_index()
+        # 🔥 ส่วนที่แก้ไขตามคำขอ: แสดงผล kWh และซ่อน Peak/Off-Peak หากเป็นอัตราเดียว
+        st.markdown("##### 🧾 แยกรายละเอียดพลังงาน")
+        cost_summary = df_summary.groupby('Period_Detail')[['kWh_15min', 'Cost_THB']].sum().reset_index()
         summary_dict = cost_summary.set_index('Period_Detail').to_dict('index')
         
-        cc1, cc2, cc3 = st.columns(3)
-        p_data = summary_dict.get('On-Peak', {'kW_Import': 0.0, 'Cost_THB': 0.0})
-        cc1.error(f"**🔴 On-Peak** ({p_rate} บ.)\n\nพลังงาน: {p_data['kW_Import']:,.2f} kW\n\n**เป็นเงิน: ฿ {p_data['Cost_THB']:,.2f}**")
-        
-        op_data = summary_dict.get('Off-Peak', {'kW_Import': 0.0, 'Cost_THB': 0.0})
-        cc2.success(f"**🟢 Off-Peak** ({op_rate} บ.)\n\nพลังงาน: {op_data['kW_Import']:,.2f} kW\n\n**เป็นเงิน: ฿ {op_data['Cost_THB']:,.2f}**")
-        
-        h_data = summary_dict.get('Holiday', {'kW_Import': 0.0, 'Cost_THB': 0.0})
-        cc3.warning(f"**🟡 Holiday** ({op_rate} บ.)\n\nพลังงาน: {h_data['kW_Import']:,.2f} kW\n\n**เป็นเงิน: ฿ {h_data['Cost_THB']:,.2f}**")
+        if rate_type == "TOU (Time of Use)":
+            cc1, cc2, cc3 = st.columns(3)
+            p_data = summary_dict.get('On-Peak', {'kWh_15min': 0.0, 'Cost_THB': 0.0})
+            cc1.error(f"**🔴 On-Peak** ({p_rate} บ.)\n\nพลังงาน: {p_data['kWh_15min']:,.2f} kWh\n\n**เป็นเงิน: ฿ {p_data['Cost_THB']:,.2f}**")
+            
+            op_data = summary_dict.get('Off-Peak', {'kWh_15min': 0.0, 'Cost_THB': 0.0})
+            cc2.success(f"**🟢 Off-Peak** ({op_rate} บ.)\n\nพลังงาน: {op_data['kWh_15min']:,.2f} kWh\n\n**เป็นเงิน: ฿ {op_data['Cost_THB']:,.2f}**")
+            
+            h_data = summary_dict.get('Holiday', {'kWh_15min': 0.0, 'Cost_THB': 0.0})
+            cc3.warning(f"**🟡 Holiday** ({op_rate} บ.)\n\nพลังงาน: {h_data['kWh_15min']:,.2f} kWh\n\n**เป็นเงิน: ฿ {h_data['Cost_THB']:,.2f}**")
+        else:
+            total_kwh = df_summary['kWh_15min'].sum()
+            total_cost = df_summary['Cost_THB'].sum()
+            st.info(f"**⚡ อัตราเดียว (Single Rate)** ({single_rate} บาท/หน่วย)\n\n⚡ **พลังงานรวมทั้งหมด:** {total_kwh:,.2f} kWh\n\n💰 **เป็นเงินประเมินทั้งหมด:** ฿ {total_cost:,.2f}")
 
-    st.markdown("### 🔄 ระบบจำลองค่าไฟฟ้า (TOU Time-Shift Simulator)")
+    st.markdown("### 🔄 ระบบจำลองค่าไฟฟ้า (Time-Shift Simulator)")
     with st.container(border=True):
-        st.markdown("ทดลองเลื่อนรอบการทำงานของเครื่องจักร เพื่อเปรียบเทียบค่าไฟฟ้าและโหลดในแต่ละช่วงเวลา TOU")
+        st.markdown("ทดลองเลื่อนรอบการทำงานของเครื่องจักร เพื่อเปรียบเทียบค่าไฟฟ้าและโหลดพลังงานในแต่ละช่วงเวลา")
         shift_mins_sim = st.number_input("⏱️ ใส่เวลาที่เลื่อน (นาที):", value=0, step=15, help="บวก = เลื่อนเวลาไปข้างหน้า, ลบ = ถอยหลัง")
             
         if shift_mins_sim != 0:
@@ -351,22 +343,30 @@ with tab4:
             c1_sim, c2_sim, c3_sim, c4_sim = st.columns(4)
             c1_sim.metric("พลังงานที่ใช้ทั้งหมด", f"{df_sim['kWh_15min'].sum():,.1f} kWh")
             c2_sim.metric("โหลดรวมทั้งหมด", f"{new_total_kw:,.1f} kW")
-            c3_sim.metric("ค่าไฟฟ้าประเมินใหม่", f"฿ {new_cost:,.2f}")
+            
+            # คำนวณส่วนต่างราคาเพื่อแสดงลูกศรขึ้น/ลง
+            diff_cost = new_cost - orig_cost
+            c3_sim.metric("ค่าไฟฟ้าประเมินใหม่", f"฿ {new_cost:,.2f}", delta=f"{diff_cost:,.2f} ฿", delta_color="inverse")
             c4_sim.metric("จุดผิดปกติ (Anomaly)", f"{len(df_sim[df_sim['Anomaly_Type'] != 'ปกติ'])} จุด")
             
-            st.markdown("##### 🧾 แยกค่าใช้จ่ายตามช่วงเวลา (เวลาจำลอง)")
-            sim_cost_summary = df_sim.groupby('Period_Detail')[['kW_Import', 'Cost_THB']].sum().reset_index()
+            st.markdown("##### 🧾 แยกรายละเอียดพลังงาน (เวลาจำลอง)")
+            sim_cost_summary = df_sim.groupby('Period_Detail')[['kWh_15min', 'Cost_THB']].sum().reset_index()
             sim_dict = sim_cost_summary.set_index('Period_Detail').to_dict('index')
             
-            sc1, sc2, sc3 = st.columns(3)
-            p_data_sim = sim_dict.get('On-Peak', {'kW_Import': 0.0, 'Cost_THB': 0.0})
-            sc1.error(f"**🔴 On-Peak** ({p_rate} บ.)\n\nพลังงาน: {p_data_sim['kW_Import']:,.2f} kW\n\n**เป็นเงิน: ฿ {p_data_sim['Cost_THB']:,.2f}**")
-            
-            op_data_sim = sim_dict.get('Off-Peak', {'kW_Import': 0.0, 'Cost_THB': 0.0})
-            sc2.success(f"**🟢 Off-Peak** ({op_rate} บ.)\n\nพลังงาน: {op_data_sim['kW_Import']:,.2f} kW\n\n**เป็นเงิน: ฿ {op_data_sim['Cost_THB']:,.2f}**")
-            
-            h_data_sim = sim_dict.get('Holiday', {'kW_Import': 0.0, 'Cost_THB': 0.0})
-            sc3.warning(f"**🟡 Holiday** ({op_rate} บ.)\n\nพลังงาน: {h_data_sim['kW_Import']:,.2f} kW\n\n**เป็นเงิน: ฿ {h_data_sim['Cost_THB']:,.2f}**")
+            if rate_type == "TOU (Time of Use)":
+                sc1, sc2, sc3 = st.columns(3)
+                p_data_sim = sim_dict.get('On-Peak', {'kWh_15min': 0.0, 'Cost_THB': 0.0})
+                sc1.error(f"**🔴 On-Peak** ({p_rate} บ.)\n\nพลังงาน: {p_data_sim['kWh_15min']:,.2f} kWh\n\n**เป็นเงิน: ฿ {p_data_sim['Cost_THB']:,.2f}**")
+                
+                op_data_sim = sim_dict.get('Off-Peak', {'kWh_15min': 0.0, 'Cost_THB': 0.0})
+                sc2.success(f"**🟢 Off-Peak** ({op_rate} บ.)\n\nพลังงาน: {op_data_sim['kWh_15min']:,.2f} kWh\n\n**เป็นเงิน: ฿ {op_data_sim['Cost_THB']:,.2f}**")
+                
+                h_data_sim = sim_dict.get('Holiday', {'kWh_15min': 0.0, 'Cost_THB': 0.0})
+                sc3.warning(f"**🟡 Holiday** ({op_rate} บ.)\n\nพลังงาน: {h_data_sim['kWh_15min']:,.2f} kWh\n\n**เป็นเงิน: ฿ {h_data_sim['Cost_THB']:,.2f}**")
+            else:
+                sim_total_kwh = df_sim['kWh_15min'].sum()
+                sim_total_cost = df_sim['Cost_THB'].sum()
+                st.info(f"**⚡ อัตราเดียว (Single Rate)** ({single_rate} บาท/หน่วย)\n\n⚡ **พลังงานรวมทั้งหมด:** {sim_total_kwh:,.2f} kWh\n\n💰 **เป็นเงินประเมินทั้งหมด:** ฿ {sim_total_cost:,.2f}")
             
             st.write("📋 **ข้อมูลดิบหลังจำลอง**")
             st.dataframe(df_sim[['Clock', 'kW_Import', 'Period_Detail', 'Cost_THB']].reset_index(drop=True), use_container_width=True, height=200)
