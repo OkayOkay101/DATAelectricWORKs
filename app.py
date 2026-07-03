@@ -285,12 +285,29 @@ with tab3:
 with tab4:
     with st.container(border=True):
         st.markdown("#### ⚙️ เลือกขอบเขตการคำนวณค่าไฟฟ้า")
-        summary_mode = st.radio("ระดับการสรุปผล:", ["ภาพรวมทั้งหมด (Total)", "รายเดือน (Monthly)", "รายวัน (Daily)"], horizontal=True, label_visibility="collapsed")
+        # --- อัปเดตส่วนนี้ เพิ่ม "กำหนดช่วงเวลา (Custom)" ---
+        summary_mode = st.radio("ระดับการสรุปผล:", ["ภาพรวมทั้งหมด (Total)", "รายเดือน (Monthly)", "รายวัน (Daily)", "กำหนดช่วงเวลา (Custom)"], horizontal=True, label_visibility="collapsed")
         
         if summary_mode == "รายวัน (Daily)":
             df_summary = df_display[df_display['Date'] == st.selectbox("📅 เลือกวัน:", sorted(df_display['Date'].unique()))]
         elif summary_mode == "รายเดือน (Monthly)":
             df_summary = df_display[df_display['Month'] == st.selectbox("📅 เลือกเดือน:", sorted(df_display['Month'].unique()))]
+        elif summary_mode == "กำหนดช่วงเวลา (Custom)":
+            min_date = df_display['Date'].min()
+            max_date = df_display['Date'].max()
+            
+            date_range = st.date_input(
+                "📅 เลือกช่วงเวลา (วันเริ่มต้น - วันสิ้นสุด):", 
+                value=(min_date, max_date), 
+                min_value=min_date, 
+                max_value=max_date
+            )
+            
+            if len(date_range) == 2:
+                start_date, end_date = date_range
+                df_summary = df_display[(df_display['Date'] >= start_date) & (df_display['Date'] <= end_date)]
+            else:
+                df_summary = df_display[df_display['Date'] == date_range[0]]
         else:
             df_summary = df_display
             
