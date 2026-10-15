@@ -1,6 +1,8 @@
 import pandas as pd
 import streamlit as st
+import numpy as np
 import io
+
 
 def parse_text_lines(lines, delimiter=','):
     header_row_idx = -1
@@ -296,27 +298,47 @@ def preprocess_data(df):
     
     return df
 
+
 def get_usage_snapshots(df):
-    snapshots = []
-    in_session = False
-    start_idx = None
+    if df is None or df.empty:
+        return []
+
+    kw_array = df['kW_Import'].to_numpy()
     
-    for idx, row in df.iterrows():
-        if row['kW_Import'] > 0 and not in_session:
-            in_session = True; start_idx = idx
-        elif row['kW_Import'] <= 0 and in_session:
-            in_session = False; snapshots.append((start_idx, idx)) 
-            
-    if in_session: snapshots.append((start_idx, len(df)-1))
+    is_positive = kw_array > 0
+    padded = np.concatenate(([False], is_positive, [False]))
+    diff = np.diff(padded.astype(np.int8))
+
+    starts = np.where(diff == 1)[0]
+    ends = np.where(diff == -1)[0]
+
+    if len(starts) == 0:
+        return []
         
+    df_len = len(df)
+
+    pad_s_array = np.maximum(0, starts - 1)
+
+    ends_adjusted = np.where(ends < df_len, ends, df_len - 1)
+    pad_e_array = np.minimum(df_len - 1, ends_adjusted)
+
+    clock_series = df['Clock']
+    if pd.api.types.is_datetime64_any_dtype(clock_series):
+        s_times = clock_series.iloc[pad_s_array].dt.strftime('%d/%m/%y %H:%M').to_numpy()
+        e_times = clock_series.iloc[pad_e_array].dt.strftime('%d/%m/%y %H:%M').to_numpy()
+    else:
+        s_times = pd.to_datetime(clock_series.iloc[pad_s_array]).dt.strftime('%d/%m/%y %H:%M').to_numpy()
+        e_times = pd.to_datetime(clock_series.iloc[pad_e_array]).dt.strftime('%d/%m/%y %H:%M').to_numpy()
+
     session_list = []
-    for i, (s_idx, e_idx) in enumerate(snapshots):
-        pad_s = max(0, s_idx - 1)
-        pad_e = min(len(df)-1, e_idx)
-        s_time = df.loc[pad_s, 'Clock'].strftime('%d/%m/%y %H:%M')
-        e_time = df.loc[pad_e, 'Clock'].strftime('%d/%m/%y %H:%M')
+    for i in range(len(starts)):
+        pad_s = int(pad_s_array[i])
+        pad_e = int(pad_e_array[i])
+
         session_list.append({
-            'label': f"⚡ รอบที่ {i+1}: {s_time} ถึง {e_time}",
-            'start_idx': pad_s, 'end_idx': pad_e
+            'label': f"⚡ รอบที่ {i+1}: {s_times[i]} ถึง {e_times[i]}",
+            'start_idx': pad_s,
+            'end_idx': pad_e
         })
+
     return session_list
