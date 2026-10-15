@@ -102,7 +102,6 @@ with st.spinner('🔄 กำลังโหลด ประมวลผล แ�
     df_combined = pd.concat(all_dfs, ignore_index=True)
     df_combined = df_combined.sort_values(['Clock', 'kW_Import'], ascending=[True, False]).drop_duplicates(subset=['Clock'], keep='first').reset_index(drop=True)
     df_combined = df_combined.sort_values('Clock').reset_index(drop=True)
-    df_combined['Cumulative_kWh_Total'] = df_combined['kWh_15min'].cumsum()
     
     df_master = apply_tou_and_anomaly(df_combined, sensitivity, p_start, p_end, p_rate, op_rate, holiday_list)
     snapshots = get_usage_snapshots(df_master)
