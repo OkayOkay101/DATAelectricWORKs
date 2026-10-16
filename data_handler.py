@@ -291,9 +291,22 @@ def preprocess_data(df):
         return pd.DataFrame()
         
     df['Date'] = df['Clock'].dt.date
+
+    # ⚡ Bolt: Format month/time with vectorized slicing while preserving midnight and missing values
     clock_str = df['Clock'].astype(str)
-    df['Month'] = np.where(df['Clock'].isna(), np.nan, clock_str.str.slice(0, 7))
-    df['Time_Str'] = np.where(df['Clock'].isna(), np.nan, clock_str.str.slice(11, 16))
+
+    month_series = clock_str.str.slice(0, 7)
+    time_series = clock_str.str.slice(11, 16).replace('', '00:00')
+
+    # Handle NaT explicitly to avoid literal 'NaT' strings or empty string replacements
+    is_nat = df['Clock'].isna()
+    if is_nat.any():
+        month_series.loc[is_nat] = np.nan
+        time_series.loc[is_nat] = np.nan
+
+    df['Month'] = month_series
+    df['Time_Str'] = time_series
+
     df['kWh_15min'] = df['kW_Import'] / 4.0
     
     return df
