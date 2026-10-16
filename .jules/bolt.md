@@ -4,3 +4,8 @@
 ## 2024-10-16 - Pandas Date and Time Accessors Bottleneck 2
 **Learning:** In Pandas, operations using `.dt.strftime()` to extract time/date string objects from a datetime column are extremely slow. They can be replaced with `.astype(str)` and vectorized string slicing (`str.slice`). However, `pd.NaT` becomes a string (`"nan"` or `"NaT"`) under `.astype(str)`. Also, datetimes without a time component (e.g. exactly midnight) might omit the time in `.astype(str)`, yielding an empty string when sliced.
 **Action:** Replace `.dt.strftime` with vectorized string slicing, but ensure `NaT` handling is explicit (`series.loc[df['Clock'].isna()] = np.nan`) and empty time strings are handled (`.replace('', '00:00')`).
+
+
+## 2024-03-24 - Pandas map vs apply
+**Learning:** Using `.apply()` with a Python function to map values in a Pandas series is slow because it executes at the Python level.
+**Action:** Replace `.apply(func)` with `.map(dict)` using a dictionary for simple value translations.

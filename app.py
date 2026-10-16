@@ -101,7 +101,6 @@ with st.spinner('🔄 กำลังโหลด ประมวลผล แ�
 
     df_combined = pd.concat(all_dfs, ignore_index=True)
     df_combined = df_combined.sort_values(['Clock', 'kW_Import'], ascending=[True, False]).drop_duplicates(subset=['Clock'], keep='first').reset_index(drop=True)
-    df_combined = df_combined.sort_values('Clock').reset_index(drop=True)
     
     df_master = apply_tou_and_anomaly(df_combined, sensitivity, p_start, p_end, p_rate, op_rate, holiday_list)
     snapshots = get_usage_snapshots(df_master)
@@ -139,7 +138,9 @@ tab1, tab2, tab3, tab4 = st.tabs([
 with tab1:
     st.subheader("กราฟแสดงความต้องการพลังงานไฟฟ้า (kW)")
     fig_all = go.Figure()
-    colors = df_display['Period_Detail'].apply(get_color)
+    # ⚡ Bolt Optimization: Use map instead of apply for simple dictionary lookup
+    color_map = {'Holiday': '#ffd166', 'On-Peak': '#e76f51', 'Off-Peak': '#2a9d8f'}
+    colors = df_display['Period_Detail'].map(color_map).fillna('#2a9d8f')
     
     if is_bar:
         fig_all.add_trace(go.Bar(x=df_display['Clock'], y=df_display['kW_Import'], marker_color=colors, name="kW (แยกสีช่วงเวลา)"))
@@ -229,7 +230,8 @@ with tab2:
         fig_15min = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.05, 
                                   subplot_titles=("พลังงาน (kW)", "พลังงานทุก 15 นาที (kWh)", "แรงดันไฟฟ้า (V)", "ประมาณการค่าไฟฟ้าราย 15 นาที (THB)"))
         
-        day_colors = day_df['Period_Detail'].apply(get_color)
+        color_map = {'Holiday': '#ffd166', 'On-Peak': '#e76f51', 'Off-Peak': '#2a9d8f'}
+        day_colors = day_df['Period_Detail'].map(color_map).fillna('#2a9d8f')
         if is_bar: fig_15min.add_trace(go.Bar(x=day_df['Clock'], y=day_df['kW_Import'], marker_color=day_colors, name="kW"), row=1, col=1)
         else: fig_15min.add_trace(go.Scatter(x=day_df['Clock'], y=day_df['kW_Import'], mode='lines', fill='tozeroy', line=dict(color="#f4a261", width=2), name="kW"), row=1, col=1)
             
@@ -292,8 +294,13 @@ with tab4:
         elif summary_mode == "รายเดือน (Monthly)":
             df_summary = df_display[df_display['Month'] == st.selectbox("📅 เลือกเดือน:", sorted(df_display['Month'].unique()))]
         elif summary_mode == "กำหนดช่วงเวลา (Custom)":
-            min_date = df_display['Date'].min()
-            max_date = df_display['Date'].max()
+            # ⚡ Bolt Optimization: Use iloc for min/max on already sorted data (handle empty safely)
+            if not df_display.empty:
+                min_date = df_display['Date'].iloc[0]
+                max_date = df_display['Date'].iloc[-1]
+            else:
+                min_date = df_display['Date'].min()
+                max_date = df_display['Date'].max()
             
             date_range = st.date_input(
                 "📅 เลือกช่วงเวลา (วันเริ่มต้น - วันสิ้นสุด):", 

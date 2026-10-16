@@ -286,14 +286,13 @@ def preprocess_data(df):
     # ป้องกันไฟล์ทับกัน
     df = df.sort_values(['Clock', 'kW_Import'], ascending=[True, False])
     df = df.drop_duplicates(subset=['Clock'], keep='first').reset_index(drop=True)
-    df = df.sort_values('Clock').reset_index(drop=True)
     
     if df.empty:
         return pd.DataFrame()
         
     df['Date'] = df['Clock'].dt.date
 
-    # ⚡ Bolt: Replace slow .dt.strftime with vectorized string slicing (~14x faster on large datasets)
+    # ⚡ Bolt: Format month/time with vectorized slicing while preserving midnight and missing values
     clock_str = df['Clock'].astype(str)
 
     month_series = clock_str.str.slice(0, 7)
@@ -337,12 +336,16 @@ def get_usage_snapshots(df):
     pad_e_array = np.minimum(df_len - 1, ends_adjusted)
 
     clock_series = df['Clock']
-    if pd.api.types.is_datetime64_any_dtype(clock_series):
-        s_times = clock_series.iloc[pad_s_array].dt.strftime('%d/%m/%y %H:%M').to_numpy()
-        e_times = clock_series.iloc[pad_e_array].dt.strftime('%d/%m/%y %H:%M').to_numpy()
-    else:
-        s_times = pd.to_datetime(clock_series.iloc[pad_s_array]).dt.strftime('%d/%m/%y %H:%M').to_numpy()
-        e_times = pd.to_datetime(clock_series.iloc[pad_e_array]).dt.strftime('%d/%m/%y %H:%M').to_numpy()
+    if not pd.api.types.is_datetime64_any_dtype(clock_series):
+        clock_series = pd.to_datetime(clock_series)
+
+    # Fast vectorized format %d/%m/%y %H:%M -> e.g. 2026-01-01 00:00:00 -> 01/01/26 00:00
+    c_str = clock_series.astype(str)
+    # yyyy-mm-dd hh:mm:ss -> dd/mm/yy hh:mm
+    formatted_times = c_str.str.slice(8, 10) + '/' + c_str.str.slice(5, 7) + '/' + c_str.str.slice(2, 4) + ' ' + c_str.str.slice(11, 16)
+
+    s_times = formatted_times.iloc[pad_s_array].to_numpy()
+    e_times = formatted_times.iloc[pad_e_array].to_numpy()
 
     session_list = []
     for i in range(len(starts)):
