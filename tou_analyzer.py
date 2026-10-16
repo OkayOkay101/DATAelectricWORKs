@@ -5,14 +5,20 @@ def apply_tou_and_anomaly(df, sensitivity, p_start, p_end, p_rate, op_rate, holi
     df = df.copy()
     
     df['Is_Weekend'] = df['Clock'].dt.weekday >= 5
-    df['Date_Str'] = df['Clock'].dt.strftime('%Y-%m-%d')
-    df['Is_Holiday'] = df['Date_Str'].isin(holiday_list)
     
-    curr_time = df['Clock'].dt.time
-    if p_start < p_end:
-        is_peak_time = (curr_time >= p_start) & (curr_time < p_end)
+    # ⚡ Bolt Optimization: Use vectorized normalize() instead of slow strftime()
+    holiday_dt = pd.to_datetime(holiday_list)
+    df['Is_Holiday'] = df['Clock'].dt.normalize().isin(holiday_dt)
+
+    # ⚡ Bolt Optimization: Use total seconds from midnight instead of slow dt.time object creation
+    curr_sec = df['Clock'].dt.hour * 3600 + df['Clock'].dt.minute * 60 + df['Clock'].dt.second
+    start_sec = p_start.hour * 3600 + p_start.minute * 60 + p_start.second
+    end_sec = p_end.hour * 3600 + p_end.minute * 60 + p_end.second
+
+    if start_sec < end_sec:
+        is_peak_time = (curr_sec >= start_sec) & (curr_sec < end_sec)
     else:
-        is_peak_time = (curr_time >= p_start) | (curr_time < p_end)
+        is_peak_time = (curr_sec >= start_sec) | (curr_sec < end_sec)
     
     # ⚡ เงื่อนไขใหม่: เริ่มต้นให้เป็น Off-Peak ทั้งหมด
     df['Period_Detail'] = 'Off-Peak'
