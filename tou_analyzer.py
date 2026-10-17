@@ -7,7 +7,7 @@ def apply_tou_and_anomaly(df, sensitivity, p_start, p_end, p_rate, op_rate, holi
     df['Is_Weekend'] = df['Clock'].dt.weekday >= 5
     
     # ⚡ Bolt Optimization: Use vectorized normalize() instead of slow strftime()
-    holiday_dt = pd.to_datetime(holiday_list)
+    holiday_dt = pd.to_datetime(holiday_list, errors='coerce')
     df['Is_Holiday'] = df['Clock'].dt.normalize().isin(holiday_dt)
 
     # ⚡ Bolt Optimization: Use total seconds from midnight instead of slow dt.time object creation
