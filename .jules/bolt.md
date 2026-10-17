@@ -9,6 +9,9 @@
 ## 2024-03-24 - Pandas map vs apply
 **Learning:** Using `.apply()` with a Python function to map values in a Pandas series is slow because it executes at the Python level.
 **Action:** Replace `.apply(func)` with `.map(dict)` using a dictionary for simple value translations.
+## 2024-10-17 - Fast Pandas Data Cleaning and Filtering
+**Learning:** Cleaning numeric strings in pandas by blindly applying `.str.replace(regex)` across an entire series is slow. Calling `.dt.date` to filter dates creates slow python `datetime.date` objects.
+**Action:** Use `pd.to_numeric(series, errors='coerce')` first, and only apply the regex cleanup on the elements that failed to parse (`mask = num.isna()`). To filter datetimes by date, use `.dt.normalize() == pd.Timestamp(date)` instead of `.dt.date == date`.
 
 ## 2026-10-17 - Streamlit Date vs Pandas Datetime Selection Performance
 **Learning:** Extracting `df['Date'] = df['Clock'].dt.date` forces the creation of python `datetime.date` objects, making equality filtering in Pandas very slow (e.g., 0.22s per filter for 500k rows). While switching to `df['Date'] = df['Clock'].dt.normalize()` is 10x faster (0.02s per filter) and uses vectorized operations, it breaks compatibility with `st.date_input` and `st.selectbox` UI states which rely on or return `datetime.date`.

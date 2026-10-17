@@ -186,8 +186,8 @@ def parse_excel_df(df_raw):
             max_sum = -1
             best_col = kw_candidates[0]
             for cand in kw_candidates:
-                # ลองหาผลรวมของคอลัมน์เพื่อดูว่ามีข้อมูลจริงหรือไม่ (ถ้าเป็น 0 แสดงว่ากราฟแบน)
-                cand_sum = pd.to_numeric(df[cand].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce').fillna(0).sum()
+                # ลองหาผลรวมของคอลัมน์เพื่อดูว่ามีข้อมูลจริงหรือไม่ (ถ้าเป็น 0 แสดงว่ากราฟแบน) - ⚡ Bolt: sample first 1000 rows
+                cand_sum = pd.to_numeric(df[cand].head(1000).astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce').fillna(0).sum()
                 if cand_sum > max_sum:
                     max_sum = cand_sum
                     best_col = cand
