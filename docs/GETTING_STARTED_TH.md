@@ -6,6 +6,7 @@
 
 โปรแกรมนี้ต้องการไลบรารี Python ต่อไปนี้เพื่อให้ทำงานได้อย่างสมบูรณ์ (อ้างอิงจาก `app.py` และ `generate_mock_data.py`):
 - `pandas`
+- `numpy`
 - `plotly`
 - `streamlit`
 - `openpyxl` (สำหรับอ่าน/เขียนไฟล์ Excel .xlsx)
