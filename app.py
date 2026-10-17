@@ -271,7 +271,8 @@ with tab3:
         title_text = "กราฟเส้นเปรียบเทียบข้อมูลเดิม เทียบกับ ข้อมูลใหม่ (ทั้งหมด)"
     else:
         plot_old = df_display[df_display['Date'] == view_date].sort_values('Clock')
-        plot_new = df_new_recalc[df_new_recalc['Original_Clock'].dt.date == view_date].sort_values('Clock')
+        # ⚡ Bolt Optimization: Use dt.normalize() and pd.Timestamp() for fast datetime matching instead of slow dt.date
+        plot_new = df_new_recalc[df_new_recalc['Original_Clock'].dt.normalize() == pd.Timestamp(view_date)].sort_values('Clock')
         title_text = f"กราฟเส้นเปรียบเทียบข้อมูลเดิม เทียบกับ ข้อมูลใหม่ ประจำวันที่ {view_date}"
     
     fig_compare = go.Figure()

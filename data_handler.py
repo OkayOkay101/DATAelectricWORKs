@@ -186,8 +186,8 @@ def parse_excel_df(df_raw):
             max_sum = -1
             best_col = kw_candidates[0]
             for cand in kw_candidates:
-                # ลองหาผลรวมของคอลัมน์เพื่อดูว่ามีข้อมูลจริงหรือไม่ (ถ้าเป็น 0 แสดงว่ากราฟแบน)
-                cand_sum = pd.to_numeric(df[cand].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce').fillna(0).sum()
+                # ลองหาผลรวมของคอลัมน์เพื่อดูว่ามีข้อมูลจริงหรือไม่ (ถ้าเป็น 0 แสดงว่ากราฟแบน) - ⚡ Bolt: sample first 1000 rows
+                cand_sum = pd.to_numeric(df[cand].head(1000).astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce').fillna(0).sum()
                 if cand_sum > max_sum:
                     max_sum = cand_sum
                     best_col = cand
@@ -269,12 +269,14 @@ def preprocess_data(df):
         
     df = df.copy()
     
-    # ล้างข้อมูลให้เหลือเฉพาะตัวเลข
-    df['kW_Import'] = df['kW_Import'].astype(str).str.replace(r'[^\d.]', '', regex=True)
-    df['kW_Import'] = pd.to_numeric(df['kW_Import'], errors='coerce').fillna(0)
-    
-    df['Voltage'] = df['Voltage'].astype(str).str.replace(r'[^\d.]', '', regex=True)
-    df['Voltage'] = pd.to_numeric(df['Voltage'], errors='coerce').fillna(220.0)
+    # ล้างข้อมูลให้เหลือเฉพาะตัวเลข (Optimized: try fast path first)
+    for col, default_val in [('kW_Import', 0), ('Voltage', 220.0)]:
+        num = pd.to_numeric(df[col], errors='coerce')
+        mask = num.isna()
+        if mask.any():
+            clean_str = df.loc[mask, col].astype(str).str.replace(r'[^\d.]', '', regex=True)
+            num[mask] = pd.to_numeric(clean_str, errors='coerce')
+        df[col] = num.fillna(default_val)
     
     # ตัด Outlier
     df = df[(df['kW_Import'] < 2000000) & (df['Voltage'] < 2000000)]
