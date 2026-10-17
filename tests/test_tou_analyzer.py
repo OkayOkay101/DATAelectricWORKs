@@ -72,15 +72,16 @@ class TouFunctionalTests(unittest.TestCase):
         self.assertEqual(result['Anomaly_Type'].iloc[21], 'ไฟตก (Low)')
         self.assertEqual(result['Anomaly_Type'].iloc[22], 'ปกติ')
 
-    def test_malformed_holiday_currently_raises_value_error(self):
-        # Characterization, NOT a fix: user input still crashes the current app.
+    def test_malformed_holiday_ignored(self):
+        # Regression test: user input with malformed dates is ignored instead of crashing
         for invalid in ['not-a-date', '2026-02-30']:
-            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
-                analyze(readings(['2026-10-19 12:00']), [invalid])
+            with self.subTest(invalid=invalid):
+                result = analyze(readings(['2026-10-19 12:00']), [invalid])
+                self.assertEqual(result['Period_Detail'].tolist(), ['On-Peak'])
 
-    def test_mixed_valid_and_invalid_holidays_currently_raise(self):
-        with self.assertRaises(ValueError):
-            analyze(readings(['2026-10-19 12:00']), ['2026-10-19', 'not-a-date'])
+    def test_mixed_valid_and_invalid_holidays_ignored(self):
+        result = analyze(readings(['2026-10-19 12:00']), ['2026-10-19', 'not-a-date'])
+        self.assertEqual(result['Period_Detail'].tolist(), ['Holiday'])
 
 
 if __name__ == '__main__':
