@@ -270,11 +270,20 @@ def preprocess_data(df):
     df = df.copy()
     
     # ล้างข้อมูลให้เหลือเฉพาะตัวเลข
-    df['kW_Import'] = df['kW_Import'].astype(str).str.replace(r'[^\d.]', '', regex=True)
-    df['kW_Import'] = pd.to_numeric(df['kW_Import'], errors='coerce').fillna(0)
+    # ⚡ Bolt Optimization: Attempt to_numeric first, and only use regex cleanup for failed values
+    num_kw = pd.to_numeric(df['kW_Import'], errors='coerce')
+    mask_kw = num_kw.isna()
+    if mask_kw.any():
+        clean_str_kw = df.loc[mask_kw, 'kW_Import'].astype(str).str.replace(r'[^\d.]', '', regex=True)
+        num_kw.loc[mask_kw] = pd.to_numeric(clean_str_kw, errors='coerce')
+    df['kW_Import'] = num_kw.fillna(0)
     
-    df['Voltage'] = df['Voltage'].astype(str).str.replace(r'[^\d.]', '', regex=True)
-    df['Voltage'] = pd.to_numeric(df['Voltage'], errors='coerce').fillna(220.0)
+    num_v = pd.to_numeric(df['Voltage'], errors='coerce')
+    mask_v = num_v.isna()
+    if mask_v.any():
+        clean_str_v = df.loc[mask_v, 'Voltage'].astype(str).str.replace(r'[^\d.]', '', regex=True)
+        num_v.loc[mask_v] = pd.to_numeric(clean_str_v, errors='coerce')
+    df['Voltage'] = num_v.fillna(220.0)
     
     # ตัด Outlier
     df = df[(df['kW_Import'] < 2000000) & (df['Voltage'] < 2000000)]
@@ -290,7 +299,7 @@ def preprocess_data(df):
     if df.empty:
         return pd.DataFrame()
         
-    df['Date'] = df['Clock'].dt.date
+    df['Date'] = df['Clock'].dt.normalize()
 
     # ⚡ Bolt: Format month/time with vectorized slicing while preserving midnight and missing values
     clock_str = df['Clock'].astype(str)

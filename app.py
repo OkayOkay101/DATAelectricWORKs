@@ -209,11 +209,11 @@ with tab1:
 # TAB 2: เจาะลึกรายวัน
 # ------------------------------------------
 with tab2:
-    available_dates = sorted(df_display['Date'].unique())
+    available_dates = [pd.Timestamp(d).date() for d in sorted(df_display['Date'].unique())]
     if available_dates:
         col_d1, col_d2 = st.columns([1, 3])
         with col_d1: sel_date = st.selectbox("📅 เลือกวันที่ต้องการเจาะลึก", available_dates)
-        day_df = df_display[df_display['Date'] == sel_date].copy()
+        day_df = df_display[df_display['Date'] == pd.Timestamp(sel_date)].copy()
 
         st.markdown(f"#### 📊 สรุปสัดส่วนการใช้พลังงานประจำวันที่ {sel_date}")
         
@@ -263,15 +263,15 @@ with tab3:
     st.download_button("📥 ดาวน์โหลดไฟล์ที่ปรับเวลาแล้ว (.csv)", df_new_recalc.to_csv(index=False).encode('utf-8-sig'), f"shifted_{shift_minutes}mins.csv")
     st.divider()
     
-    dates_for_shift = ["ดูทั้งหมด (ตั้งแต่ต้นจนจบ)"] + sorted(df_display['Date'].unique().tolist())
+    dates_for_shift = ["ดูทั้งหมด (ตั้งแต่ต้นจนจบ)"] + [pd.Timestamp(d).date() for d in sorted(df_display['Date'].unique())]
     view_date = st.selectbox("📅 เลือกรูปแบบการเปรียบเทียบกราฟ", dates_for_shift, key="shift_date_selector")
     
     if view_date == "ดูทั้งหมด (ตั้งแต่ต้นจนจบ)":
         plot_old, plot_new = df_display.sort_values('Clock'), df_new_recalc.sort_values('Clock')
         title_text = "กราฟเส้นเปรียบเทียบข้อมูลเดิม เทียบกับ ข้อมูลใหม่ (ทั้งหมด)"
     else:
-        plot_old = df_display[df_display['Date'] == view_date].sort_values('Clock')
-        plot_new = df_new_recalc[df_new_recalc['Original_Clock'].dt.date == view_date].sort_values('Clock')
+        plot_old = df_display[df_display['Date'] == pd.Timestamp(view_date)].sort_values('Clock')
+        plot_new = df_new_recalc[df_new_recalc['Original_Clock'].dt.normalize() == pd.Timestamp(view_date)].sort_values('Clock')
         title_text = f"กราฟเส้นเปรียบเทียบข้อมูลเดิม เทียบกับ ข้อมูลใหม่ ประจำวันที่ {view_date}"
     
     fig_compare = go.Figure()
@@ -290,17 +290,19 @@ with tab4:
         summary_mode = st.radio("ระดับการสรุปผล:", ["ภาพรวมทั้งหมด (Total)", "รายเดือน (Monthly)", "รายวัน (Daily)", "กำหนดช่วงเวลา (Custom)"], horizontal=True, label_visibility="collapsed")
         
         if summary_mode == "รายวัน (Daily)":
-            df_summary = df_display[df_display['Date'] == st.selectbox("📅 เลือกวัน:", sorted(df_display['Date'].unique()))]
+            # ⚡ Bolt Optimization: Cast Streamlit UI selectbox outputs to pd.Timestamp for valid datetime64 matching
+            daily_dates_ui = [pd.Timestamp(d).date() for d in sorted(df_display['Date'].unique())]
+            df_summary = df_display[df_display['Date'] == pd.Timestamp(st.selectbox("📅 เลือกวัน:", daily_dates_ui))]
         elif summary_mode == "รายเดือน (Monthly)":
             df_summary = df_display[df_display['Month'] == st.selectbox("📅 เลือกเดือน:", sorted(df_display['Month'].unique()))]
         elif summary_mode == "กำหนดช่วงเวลา (Custom)":
             # ⚡ Bolt Optimization: Use iloc for min/max on already sorted data (handle empty safely)
             if not df_display.empty:
-                min_date = df_display['Date'].iloc[0]
-                max_date = df_display['Date'].iloc[-1]
+                min_date = pd.Timestamp(df_display['Date'].iloc[0]).date()
+                max_date = pd.Timestamp(df_display['Date'].iloc[-1]).date()
             else:
-                min_date = df_display['Date'].min()
-                max_date = df_display['Date'].max()
+                min_date = pd.Timestamp(df_display['Date'].min()).date() if not pd.isna(df_display['Date'].min()) else None
+                max_date = pd.Timestamp(df_display['Date'].max()).date() if not pd.isna(df_display['Date'].max()) else None
             
             date_range = st.date_input(
                 "📅 เลือกช่วงเวลา (วันเริ่มต้น - วันสิ้นสุด):", 
@@ -311,9 +313,9 @@ with tab4:
             
             if len(date_range) == 2:
                 start_date, end_date = date_range
-                df_summary = df_display[(df_display['Date'] >= start_date) & (df_display['Date'] <= end_date)]
+                df_summary = df_display[(df_display['Date'] >= pd.Timestamp(start_date)) & (df_display['Date'] <= pd.Timestamp(end_date))]
             else:
-                df_summary = df_display[df_display['Date'] == date_range[0]]
+                df_summary = df_display[df_display['Date'] == pd.Timestamp(date_range[0])]
         else:
             df_summary = df_display
             
