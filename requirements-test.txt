@@ -1,0 +1,4 @@
+# Test environment only. pandas is already imported by tou_analyzer.py.
+# unittest is part of Python; no additional test framework is introduced.
+pandas==2.2.3
+numpy==2.1.3
