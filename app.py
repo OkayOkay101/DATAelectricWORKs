@@ -260,7 +260,7 @@ with tab3:
     df_new['Clock'] = df_new['Clock'] + pd.to_timedelta(shift_minutes, unit='m')
     df_new_recalc = apply_tou_and_anomaly(df_new, sensitivity, p_start, p_end, p_rate, op_rate, holiday_list)
     
-    st.download_button("📥 ดาวน์โหลดไฟล์ที่ปรับเวลาแล้ว (.csv)", df_new_recalc.to_csv(index=False).encode('utf-8-sig'), f"shifted_{shift_minutes}mins.csv")
+    st.download_button("📥 ดาวน์โหลดไฟล์ที่ปรับเวลาแล้ว (.csv)", lambda: df_new_recalc.to_csv(index=False).encode('utf-8-sig'), f"shifted_{shift_minutes}mins.csv")
     st.divider()
     
     dates_for_shift = ["ดูทั้งหมด (ตั้งแต่ต้นจนจบ)"] + [pd.Timestamp(d).date() for d in sorted(df_display['Date'].unique())]
