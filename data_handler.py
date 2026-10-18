@@ -327,12 +327,6 @@ def preprocess_data(df):
     month_series = clock_str.str.slice(0, 7)
     time_series = clock_str.str.slice(11, 16).replace('', '00:00')
 
-    # Handle NaT explicitly to avoid literal 'NaT' strings or empty string replacements
-    is_nat = df['Clock'].isna()
-    if is_nat.any():
-        month_series.loc[is_nat] = np.nan
-        time_series.loc[is_nat] = np.nan
-
     df['Month'] = month_series
     df['Time_Str'] = time_series
 
