@@ -5,9 +5,17 @@ import io
 
 
 def parse_text_lines(lines, delimiter=','):
+    iterator = iter(lines)
     header_row_idx = -1
+    buffered_header = []
+
     # 1. ค้นหาบรรทัดที่เป็นหัวตาราง
-    for i, line in enumerate(lines[:50]):
+    for i in range(50):
+        try:
+            line = next(iterator)
+        except StopIteration:
+            break
+        buffered_header.append(line)
         l_lower = line.lower()
         if ('clock' in l_lower and 'import' in l_lower) or \
            ('ch1' in l_lower and 'ch4' in l_lower) or \
@@ -29,7 +37,7 @@ def parse_text_lines(lines, delimiter=','):
     if header_row_idx == -1:
         return None
         
-    header_line = lines[header_row_idx]
+    header_line = buffered_header[header_row_idx]
     
     if delimiter == ',' and ',' not in header_line:
         cols = [c.strip().lower() for c in header_line.split()]
@@ -65,16 +73,23 @@ def parse_text_lines(lines, delimiter=','):
             kw_idx_candidates.append(i)
     
     kw_idx = -1
+    buffered_data = []
     if kw_idx_candidates:
         if len(kw_idx_candidates) == 1:
             kw_idx = kw_idx_candidates[0]
         else:
+            for _ in range(20):
+                try:
+                    buffered_data.append(next(iterator))
+                except StopIteration:
+                    break
+
             # 🎯 แก้ปัญหาข้อมูลศูนย์: สแกนข้อมูล 20 บรรทัดแรก เพื่อดูว่าคอลัมน์ไหน (Import/Export) มีข้อมูลใช้งานได้จริง
             best_idx = kw_idx_candidates[0]
             max_val = -1
             for cand_idx in kw_idx_candidates:
                 cand_sum = 0
-                for line in lines[header_row_idx+1:header_row_idx+21]:
+                for line in buffered_data:
                     parts = [p.strip() for p in line.split(delimiter)]
                     if cand_idx < len(parts):
                         val = parts[cand_idx].replace(',', '')
@@ -92,7 +107,14 @@ def parse_text_lines(lines, delimiter=','):
         
     # 3. สกัดข้อมูลทีละบรรทัด
     data_rows = []
-    for line in lines[header_row_idx+1:]:
+
+    def line_generator():
+        for line in buffered_data:
+            yield line
+        for line in iterator:
+            yield line
+
+    for line in line_generator():
         line = line.strip()
         if not line: continue
         
@@ -234,10 +256,11 @@ def load_file(uploaded_file, file_ext):
         encodings_to_try = ['utf-8-sig', 'cp874', 'utf-16', 'utf-16le', 'tis-620']
         for enc in encodings_to_try:
             try:
-                string_data = bytes_data.decode(enc)
-                if len(string_data) > 0 and '\x00' not in string_data[:100]:
-                    lines = string_data.splitlines()
-                    df_result = parse_text_lines(lines, delimiter=',')
+                text_stream = io.TextIOWrapper(io.BytesIO(bytes_data), encoding=enc)
+                head = text_stream.read(100)
+                if len(head) > 0 and '\x00' not in head:
+                    text_stream.seek(0)
+                    df_result = parse_text_lines(text_stream, delimiter=',')
                     if df_result is not None and not df_result.empty:
                         break
             except Exception as e:
