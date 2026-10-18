@@ -2,6 +2,7 @@ import pandas as pd
 import streamlit as st
 import numpy as np
 import io
+import logging
 
 
 def parse_text_lines(lines, delimiter=','):
@@ -246,10 +247,11 @@ def load_file(uploaded_file, file_ext):
             try:
                 df_raw = pd.read_csv(io.BytesIO(bytes_data), encoding='utf-8-sig', names=range(50), dtype=str, low_memory=False)
             except Exception as e:
+                logging.warning(f"Failed to read CSV with utf-8-sig: {e}")
                 df_raw = pd.read_csv(io.BytesIO(bytes_data), encoding='cp874', names=range(50), dtype=str, low_memory=False)
             df_result = parse_excel_df(df_raw)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.warning(f"Failed to parse CSV with pandas: {e}")
             
     # 2. ลองอ่านแบบ Text บรรทัดต่อบรรทัด 
     if df_result is None:
@@ -264,7 +266,7 @@ def load_file(uploaded_file, file_ext):
                     if df_result is not None and not df_result.empty:
                         break
             except Exception as e:
-                pass
+                logging.warning(f"Failed to read text lines with encoding {enc}: {e}")
             
     # 3. หากเป็นไฟล์ .xls (Binary) หรือ HTML 
     if df_result is None and file_ext in ['xlsx', 'xls', 'csv']:
@@ -273,12 +275,13 @@ def load_file(uploaded_file, file_ext):
             df_raw = pd.read_excel(io.BytesIO(bytes_data), engine=engine, header=None)
             df_result = parse_excel_df(df_raw)
         except Exception as e:
+            logging.warning(f"Failed to read excel with {engine}: {e}")
             try:
                 dfs = pd.read_html(io.BytesIO(bytes_data), encoding='utf-8')
                 if dfs:
                     df_result = parse_excel_df(dfs[0])
             except Exception as e:
-                pass
+                logging.warning(f"Failed to read html: {e}")
                 
     if df_result is None or df_result.empty:
         raise ValueError("อ่านไฟล์ไม่สำเร็จ โครงสร้างไฟล์ผิดปกติหรือไม่พบข้อมูลเวลา")
