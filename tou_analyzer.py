@@ -15,7 +15,9 @@ def apply_tou_and_anomaly(df, sensitivity, p_start, p_end, p_rate, op_rate, holi
     start_sec = p_start.hour * 3600 + p_start.minute * 60 + p_start.second
     end_sec = p_end.hour * 3600 + p_end.minute * 60 + p_end.second
 
-    if start_sec < end_sec:
+    if start_sec == end_sec:
+        is_peak_time = pd.Series(False, index=df.index)
+    elif start_sec < end_sec:
         is_peak_time = (curr_sec >= start_sec) & (curr_sec < end_sec)
     else:
         is_peak_time = (curr_sec >= start_sec) | (curr_sec < end_sec)
