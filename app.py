@@ -119,8 +119,11 @@ with st.container(border=True):
 if selected_snapshot == "🌐 ดูข้อมูลทั้งหมด (All Data)":
     df_display = df_master.copy()
 else:
-    sel_s = next(s for s in snapshots if s['label'] == selected_snapshot)
-    df_display = df_master.iloc[sel_s['start_idx'] : sel_s['end_idx'] + 1].copy()
+    sel_s = next((s for s in snapshots if s['label'] == selected_snapshot), None)
+    if sel_s:
+        df_display = df_master.iloc[sel_s['start_idx'] : sel_s['end_idx'] + 1].copy()
+    else:
+        df_display = df_master.copy()
 
 # ==========================================
 # 📑 TABS NAVIGATION
