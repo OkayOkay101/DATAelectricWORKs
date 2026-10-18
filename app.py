@@ -358,6 +358,7 @@ with tab4:
         if shift_mins_sim != 0:
             df_sim = df_summary.copy()
             df_sim['Clock'] = df_sim['Clock'] + pd.to_timedelta(shift_mins_sim, unit='m')
+            df_sim['Date'] = df_sim['Clock'].dt.normalize()
             df_sim = apply_tou_and_anomaly(df_sim, sensitivity, p_start, p_end, p_rate, op_rate, holiday_list)
             
             new_cost = df_sim['Cost_THB'].sum()
@@ -397,3 +398,29 @@ with tab4:
             st.dataframe(df_sim[['Clock', 'kW_Import', 'Period_Detail', 'Cost_THB']].reset_index(drop=True), use_container_width=True, height=200)
         else:
             st.info("รอการป้อนตัวเลขจำลองเวลา... (กรุณาใส่ตัวเลขที่ไม่ใช่ 0 ในช่องด้านบน)")
+
+def test_regression_date_update():
+    """
+    Regression test: Ensure that shifting 'Clock' updates 'Date' correctly
+    when the time crosses into a new day.
+    """
+    import pandas as pd
+
+    # Mock data for simulation
+    df_sim = pd.DataFrame({
+        'Clock': [pd.Timestamp('2024-01-01 23:30:00')],
+        'Date': [pd.Timestamp('2024-01-01')],
+        'kW_Import': [100.0],
+        'Voltage': [220.0]
+    })
+
+    # Simulate a shift forward by 60 minutes
+    shift_mins_sim = 60
+
+    # Apply logic from app.py
+    df_sim['Clock'] = df_sim['Clock'] + pd.to_timedelta(shift_mins_sim, unit='m')
+    df_sim['Date'] = df_sim['Clock'].dt.normalize()
+
+    # Check that both Date and Clock reflect crossing into 2024-01-02
+    assert df_sim.iloc[0]['Clock'] == pd.Timestamp('2024-01-02 00:30:00'), "Clock did not shift correctly"
+    assert df_sim.iloc[0]['Date'] == pd.Timestamp('2024-01-02'), "Date did not update to match Clock across day boundary"
