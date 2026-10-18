@@ -55,6 +55,14 @@ class TouFunctionalTests(unittest.TestCase):
         self.assertEqual(result['Period_Detail'].tolist(),
                          ['On-Peak', 'Off-Peak', 'Off-Peak', 'On-Peak'])
 
+    def test_zero_length_peak_window(self):
+        # Regression test: if start and end times are identical, no time should be evaluated as On-Peak
+        result = analyze(readings(['2026-10-19 09:00', '2026-10-19 12:00',
+                                   '2026-10-19 23:00']),
+                         start=time(9), end=time(9))
+        self.assertEqual(result['Period_Detail'].tolist(),
+                         ['Off-Peak', 'Off-Peak', 'Off-Peak'])
+
     def test_cost_uses_actual_energy(self):
         result = analyze(readings(['2026-10-19 12:00', '2026-10-19 23:00'], [8.0, 2.0]))
         self.assertEqual(result['Cost_THB'].tolist(), [10.0, 1.0])
