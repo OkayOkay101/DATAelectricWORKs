@@ -47,9 +47,3 @@ def apply_tou_and_anomaly(df, sensitivity, p_start, p_end, p_rate, op_rate, holi
         df.loc[(df['kW_Import'] < lower), 'Anomaly_Type'] = 'ไฟตก (Low)'
     
     return df
-
-def get_color(period):
-    """จับคู่สีสำหรับสร้างกราฟ UI"""
-    if 'Holiday' in period: return '#ffd166' # สีเหลือง
-    elif 'On-Peak' in period: return '#e76f51' # สีส้ม
-    else: return '#2a9d8f' # สีเขียว (Off-Peak)
