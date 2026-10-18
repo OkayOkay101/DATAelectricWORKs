@@ -80,7 +80,7 @@ def parse_text_lines(lines, delimiter=','):
                         val = parts[cand_idx].replace(',', '')
                         try:
                             cand_sum += float(val)
-                        except:
+                        except Exception as e:
                             pass
                 if cand_sum > max_val:
                     max_val = cand_sum
@@ -223,7 +223,7 @@ def load_file(uploaded_file, file_ext):
         try:
             try:
                 df_raw = pd.read_csv(io.BytesIO(bytes_data), encoding='utf-8-sig', names=range(50), dtype=str, low_memory=False)
-            except:
+            except Exception as e:
                 df_raw = pd.read_csv(io.BytesIO(bytes_data), encoding='cp874', names=range(50), dtype=str, low_memory=False)
             df_result = parse_excel_df(df_raw)
         except Exception:
@@ -240,7 +240,7 @@ def load_file(uploaded_file, file_ext):
                     df_result = parse_text_lines(lines, delimiter=',')
                     if df_result is not None and not df_result.empty:
                         break
-            except:
+            except Exception as e:
                 pass
             
     # 3. หากเป็นไฟล์ .xls (Binary) หรือ HTML 
@@ -249,12 +249,12 @@ def load_file(uploaded_file, file_ext):
             engine = 'openpyxl' if file_ext == 'xlsx' else 'xlrd'
             df_raw = pd.read_excel(io.BytesIO(bytes_data), engine=engine, header=None)
             df_result = parse_excel_df(df_raw)
-        except:
+        except Exception as e:
             try:
                 dfs = pd.read_html(io.BytesIO(bytes_data), encoding='utf-8')
                 if dfs:
                     df_result = parse_excel_df(dfs[0])
-            except:
+            except Exception as e:
                 pass
                 
     if df_result is None or df_result.empty:
