@@ -43,8 +43,8 @@ def apply_tou_and_anomaly(df, sensitivity, p_start, p_end, p_rate, op_rate, holi
         mean_v, std_v = active['kW_Import'].mean(), active['kW_Import'].std()
         upper = mean_v + (sensitivity * std_v)
         lower = max(0.01, mean_v - (sensitivity * std_v))
-        df.loc[(df['kW_Import'] > upper) & (df['kW_Import'] > 0), 'Anomaly_Type'] = 'สูงกว่าเกณฑ์ (High)'
-        df.loc[(df['kW_Import'] < lower) & (df['kW_Import'] > 0), 'Anomaly_Type'] = 'ไฟตก (Low)'
+        df.loc[(df['kW_Import'] > upper), 'Anomaly_Type'] = 'สูงกว่าเกณฑ์ (High)'
+        df.loc[(df['kW_Import'] < lower), 'Anomaly_Type'] = 'ไฟตก (Low)'
     
     return df
 

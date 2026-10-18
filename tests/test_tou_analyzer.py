@@ -70,7 +70,7 @@ class TouFunctionalTests(unittest.TestCase):
         result = analyze(frame, sensitivity=0.5)
         self.assertEqual(result['Anomaly_Type'].iloc[20], 'สูงกว่าเกณฑ์ (High)')
         self.assertEqual(result['Anomaly_Type'].iloc[21], 'ไฟตก (Low)')
-        self.assertEqual(result['Anomaly_Type'].iloc[22], 'ปกติ')
+        self.assertEqual(result['Anomaly_Type'].iloc[22], 'ไฟตก (Low)')
 
     def test_malformed_holiday_ignored(self):
         # Regression test: user input with malformed dates is ignored instead of crashing
@@ -82,6 +82,13 @@ class TouFunctionalTests(unittest.TestCase):
     def test_mixed_valid_and_invalid_holidays_ignored(self):
         result = analyze(readings(['2026-10-19 12:00']), ['2026-10-19', 'not-a-date'])
         self.assertEqual(result['Period_Detail'].tolist(), ['Holiday'])
+
+    def test_anomaly_detects_zero_kw_as_low(self):
+        # Create a frame with enough data to establish a mean > 0.01
+        frame = readings(['2026-10-19 12:00'] * 10, [10.0] * 9 + [0.0])
+        result = analyze(frame, sensitivity=0.5)
+        # The 0.0 value should be classified as 'ไฟตก (Low)'
+        self.assertEqual(result['Anomaly_Type'].iloc[9], 'ไฟตก (Low)')
 
 
 if __name__ == '__main__':
