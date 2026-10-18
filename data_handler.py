@@ -4,6 +4,19 @@ import numpy as np
 import io
 
 
+def is_header_row(row_str):
+    l_lower = row_str.lower()
+    return (('clock' in l_lower and 'import' in l_lower) or
+           ('ch1' in l_lower and 'ch4' in l_lower) or
+           ('date' in l_lower and 'clock' in l_lower) or
+           ('pea no' in l_lower and 'clock' in l_lower) or
+           ('pea no' in l_lower and 'datatime' in l_lower) or
+           ('datatime' in l_lower and 'import' in l_lower and 'kw' in l_lower) or
+           ('time' in l_lower and 'active' in l_lower and 'power' in l_lower) or
+           ('เวลา' in l_lower and 'พลังงาน' in l_lower) or
+           ('วันที่' in l_lower and 'เวลา' in l_lower) or
+           ('เวลา' in l_lower and 'kw' in l_lower))
+
 def parse_text_lines(lines, delimiter=','):
     iterator = iter(lines)
     header_row_idx = -1
@@ -16,17 +29,7 @@ def parse_text_lines(lines, delimiter=','):
         except StopIteration:
             break
         buffered_header.append(line)
-        l_lower = line.lower()
-        if ('clock' in l_lower and 'import' in l_lower) or \
-           ('ch1' in l_lower and 'ch4' in l_lower) or \
-           ('date' in l_lower and 'clock' in l_lower) or \
-           ('pea no' in l_lower and 'clock' in l_lower) or \
-           ('pea no' in l_lower and 'datatime' in l_lower) or \
-           ('datatime' in l_lower and 'import' in l_lower and 'kw' in l_lower) or \
-           ('time' in l_lower and 'active' in l_lower and 'power' in l_lower) or \
-           ('เวลา' in l_lower and 'พลังงาน' in l_lower) or \
-           ('วันที่' in l_lower and 'เวลา' in l_lower) or \
-           ('เวลา' in l_lower and 'kw' in l_lower):
+        if is_header_row(line):
             header_row_idx = i
             if '\t' in line and ',' not in line:
                 delimiter = '\t'
@@ -144,17 +147,8 @@ def parse_excel_df(df_raw):
     """สำหรับอ่านไฟล์ตาราง (Excel) หรือรับต่อจาก pd.read_csv()"""
     header_row_idx = -1
     for i in range(min(50, len(df_raw))):
-        row_str = ' '.join(df_raw.iloc[i].fillna('').astype(str)).lower()
-        if ('clock' in row_str and 'import' in row_str) or \
-           ('ch1' in row_str and 'ch4' in row_str) or \
-           ('date' in row_str and 'clock' in row_str) or \
-           ('pea no' in row_str and 'clock' in row_str) or \
-           ('pea no' in row_str and 'datatime' in row_str) or \
-           ('datatime' in row_str and 'import' in row_str and 'kw' in row_str) or \
-           ('time' in row_str and 'active' in row_str and 'power' in row_str) or \
-           ('เวลา' in row_str and 'พลังงาน' in row_str) or \
-           ('วันที่' in row_str and 'เวลา' in row_str) or \
-           ('เวลา' in row_str and 'kw' in row_str):
+        row_str = ' '.join(df_raw.iloc[i].fillna('').astype(str))
+        if is_header_row(row_str):
             header_row_idx = i
             break
             
