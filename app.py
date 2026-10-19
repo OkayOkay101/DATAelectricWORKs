@@ -56,7 +56,8 @@ with st.sidebar:
 
     with st.expander("📅 ตั้งค่าวันหยุดนักขัตฤกษ์", expanded=False):
         st.caption("พิมพ์วันที่ (YYYY-MM-DD) คั่นด้วยลูกน้ำ (,)")
-        default_holidays = "2026-01-01, 2026-03-02, 2026-04-06, 2026-04-13, 2026-04-14, 2026-04-15, 2026-05-01, 2026-05-04, 2026-06-03, 2026-07-28, 2026-07-29, 2026-07-30, 2026-08-12, 2026-10-13, 2026-10-23, 2026-12-10, 2026-12-31"
+        curr_yr = datetime.date.today().year
+        default_holidays = ", ".join([f"{curr_yr}-{m:02d}-{d:02d}" for m, d in [(1, 1), (4, 6), (4, 13), (4, 14), (4, 15), (5, 1), (5, 4), (6, 3), (7, 28), (8, 12), (10, 13), (10, 23), (12, 5), (12, 10), (12, 31)]])
         holiday_input = st.text_area("รายการวันหยุด:", value=default_holidays, height=120)
         holiday_list = [x.strip() for x in holiday_input.replace('\n', ',').split(',') if x.strip()]
 
@@ -452,3 +453,15 @@ def test_empty_date_input_index_error():
 
     if not found_check:
         raise AssertionError("Regression: len(date_range) > 0 check is missing to prevent IndexError on empty date_input")
+
+def test_no_hardcoded_default_holidays():
+    import ast
+    with open('app.py', 'r', encoding='utf-8') as f:
+        tree = ast.parse(f.read())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == 'default_holidays':
+                    if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                        if "2026-" in node.value.value:
+                            raise AssertionError("Regression: default_holidays is hardcoded.")
