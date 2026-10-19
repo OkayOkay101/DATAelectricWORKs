@@ -8,6 +8,10 @@ import datetime
 from data_handler import load_file, preprocess_data, get_usage_snapshots
 from tou_analyzer import apply_tou_and_anomaly, get_color
 
+@st.cache_data
+def convert_df_to_csv(df):
+    return df.to_csv(index=False).encode('utf-8-sig')
+
 # ==========================================
 # 🎨 Page Configuration & Custom CSS
 # ==========================================
@@ -265,7 +269,7 @@ with tab3:
     df_new['Clock'] = df_new['Clock'] + pd.to_timedelta(shift_minutes, unit='m')
     df_new_recalc = apply_tou_and_anomaly(df_new, sensitivity, p_start, p_end, p_rate, op_rate, holiday_list)
     
-    csv_data = df_new_recalc.to_csv(index=False).encode('utf-8-sig')
+    csv_data = convert_df_to_csv(df_new_recalc)
     st.download_button("📥 ดาวน์โหลดไฟล์ที่ปรับเวลาแล้ว (.csv)", csv_data, f"shifted_{shift_minutes}mins.csv")
     st.divider()
     
