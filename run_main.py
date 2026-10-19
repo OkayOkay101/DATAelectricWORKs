@@ -1,6 +1,6 @@
 import os
 import sys
-import streamlit.web.cli as stcli
+import subprocess
 
 def get_resource_path(relative_path):
     """ฟังก์ชันหาตำแหน่งพาธไฟล์ดิบที่แท้จริงหลังจากถูกมัดรวมด้วย PyInstaller"""
@@ -12,11 +12,14 @@ if __name__ == "__main__":
     # อ้างอิงไปยังไฟล์หน้าจอหลักหลักของคุณ (app.py)
     script_path = get_resource_path("app.py")
     
-    sys.argv = [
-        "streamlit", 
+    cmd = [
+        sys.executable,
+        "-m",
+        "streamlit",
         "run", 
         script_path, 
         "--global.developmentMode=false",
         "--server.headless=false"  # <--- แก้ตรงนี้เป็น false ครับ
     ]
-    sys.exit(stcli.main())
+    result = subprocess.run(cmd)
+    sys.exit(result.returncode)
