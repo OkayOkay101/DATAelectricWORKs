@@ -1,5 +1,16 @@
 import unittest
+from pathlib import Path
+
 import pandas as pd
+from streamlit.testing.v1 import AppTest
+
+
+APP_PATH = Path(__file__).resolve().parents[1] / 'app.py'
+UPLOAD = (
+    'Clock,kW_Import,Voltage\n'
+    '19/10/2026 10:00,100,220\n'
+    '19/10/2026 10:15,110,220\n'
+).encode('utf-8')
 
 class TestApp(unittest.TestCase):
     def test_regression_date_update(self):
@@ -27,54 +38,41 @@ class TestApp(unittest.TestCase):
         self.assertEqual(df_sim.iloc[0]['Date'], pd.Timestamp('2024-01-02'), "Date did not update to match Clock across day boundary")
 
     def test_ui_interactions(self):
-        """
-        Integration test: verify UI interactions with AppTest
-        """
-        from streamlit.testing.v1 import AppTest
-        import os
+        """Uploading CSV and shifting 60 minutes changes the displayed readings."""
+        at = AppTest.from_file(str(APP_PATH), default_timeout=15).run()
+        self.assertFalse(at.exception)
+        at.file_uploader[0].set_value([('readings.csv', UPLOAD, 'text/csv')]).run()
+        self.assertFalse(at.exception)
+        self.assertTrue(any('วิเคราะห์ข้อมูลสำเร็จ 1 ไฟล์' in item.value
+                            for item in at.success))
 
-        # Resolve path to app.py based on repo root
-        app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.py')
-        at = AppTest.from_file(app_path).run()
+        shifts = [item for item in at.number_input if 'ใส่เวลาที่เลื่อน' in item.label]
+        self.assertEqual(len(shifts), 1, 'The cost-simulator shift control is missing')
+        shifts[0].set_value(60).run()
+        self.assertFalse(at.exception)
+        shifted = at.dataframe[-1].value
+        self.assertEqual(shifted['Clock'].tolist(),
+                         [pd.Timestamp('2026-10-19 11:00'), pd.Timestamp('2026-10-19 11:15')])
+        self.assertEqual(shifted['kW_Import'].tolist(), [100.0, 110.0])
+        self.assertEqual(shifted['Period_Detail'].tolist(), ['On-Peak', 'On-Peak'])
+        self.assertEqual(len(at.download_button), 1)
 
-        # Initial run should not have exceptions
-        self.assertFalse(at.exception, f"App execution failed: {at.exception}")
+    def test_ui_empty_state(self):
+        """With no upload the app explains what to do without showing results."""
+        at = AppTest.from_file(str(APP_PATH), default_timeout=15).run()
+        self.assertFalse(at.exception)
+        self.assertEqual(len(at.title), 1)
+        self.assertEqual(len(at.file_uploader), 1)
+        self.assertTrue(any('อัปโหลดไฟล์ Load Profile' in item.value for item in at.info))
+        self.assertEqual(len(at.dataframe), 0)
+        self.assertEqual(len(at.download_button), 0)
 
-        # Test basic UI elements
-        self.assertTrue(len(at.title) > 0, "No title found in the UI")
-        self.assertTrue(len(at.file_uploader) > 0, "No file uploader found in the UI")
-
-        # Check initial markdown instructions
-        self.assertTrue(len(at.markdown) > 0, "No markdown instructions found")
-
-        # Simulate file upload to test UI interactions (e.g. download button)
-        import pandas as pd
-        import io
-
-        # Create a simple mock CSV
-        df = pd.DataFrame({
-            'Clock': ['2026-01-01 10:00:00', '2026-01-01 10:15:00'],
-            'kW_Import': [100.0, 110.0],
-            'Voltage': [220.0, 220.0]
-        })
-        buffer = io.BytesIO()
-        df.to_csv(buffer, index=False)
-        content = buffer.getvalue()
-
-        # Upload file
-        at.file_uploader[0].set_value([("mock_data.csv", content, "text/csv")]).run()
-
-        # Check for selectboxes or radio buttons to show the UI has responded
-        self.assertTrue(len(at.selectbox) > 0, "No selectboxes found after file upload")
-        self.assertTrue(len(at.radio) > 0, "No radio buttons found after file upload")
-
-        # Find number inputs to change shift minutes
-        # App.py has: shift_mins_sim = st.number_input("⏱️ ใส่เวลาที่เลื่อน (นาที):", ...)
-        # We assume it is one of the number_inputs
-        for ni in at.number_input:
-            if "ใส่เวลาที่เลื่อน" in ni.label:
-                ni.set_value(60).run()
-                break
-
-        # We check if a download button is created after simulating shifting time
-        self.assertTrue(len(at.download_button) > 0, "No download button found after time shifting")
+    def test_ui_invalid_upload_shows_error(self):
+        """An unreadable CSV displays a validation error rather than results."""
+        at = AppTest.from_file(str(APP_PATH), default_timeout=15).run()
+        at.file_uploader[0].set_value([('invalid.csv', b'not,a,load-profile\n', 'text/csv')]).run()
+        self.assertFalse(at.exception)
+        self.assertTrue(any('ไม่มีข้อมูลที่สามารถนำมาวิเคราะห์' in item.value
+                            for item in at.error))
+        self.assertEqual(len(at.dataframe), 0)
+        self.assertEqual(len(at.download_button), 0)

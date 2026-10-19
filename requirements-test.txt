@@ -1,5 +1,6 @@
-# Test environment only. pandas is already imported by tou_analyzer.py.
-# unittest is part of Python; no additional test framework is introduced.
+# Test environment: exercise the real analyzer and Streamlit UI.
+# AppTest is bundled with Streamlit; unittest remains the test runner.
 pandas==2.2.3
 numpy==2.1.3
-streamlit>=1.35.0
+streamlit==1.66.0
+plotly==7.1.0
