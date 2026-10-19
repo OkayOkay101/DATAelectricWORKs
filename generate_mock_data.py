@@ -55,21 +55,6 @@ def generate_mock_data():
     # Excel (.xlsx)
     df.to_excel(f"{output_dir}/mock_dataset.xlsx", index=False)
 
-    # Excel (.xls)
-    # pandas newer version doesn't support xlwt, so we can try openpyxl or just fallback
-    try:
-        import xlwt
-        wb = xlwt.Workbook()
-        ws = wb.add_sheet('Sheet1')
-        for col_idx, col_name in enumerate(df.columns):
-            ws.write(0, col_idx, col_name)
-        for row_idx, row in enumerate(df.itertuples(index=False), 1):
-            for col_idx, val in enumerate(row):
-                ws.write(row_idx, col_idx, val)
-        wb.save(f"{output_dir}/mock_dataset.xls")
-    except ImportError:
-        print("xlwt not installed, skipping .xls generation")
-
     # TXT (Comma separated)
     df.to_csv(f"{output_dir}/mock_dataset.txt", index=False, sep=",")
 
