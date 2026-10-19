@@ -43,9 +43,22 @@ def apply_tou_and_anomaly(df, sensitivity, p_start, p_end, p_rate, op_rate, holi
     df['Anomaly_Type'] = 'ปกติ'
     if not active.empty:
         mean_v, std_v = active['kW_Import'].mean(), active['kW_Import'].std()
+        if pd.isna(std_v):
+            std_v = 0.0
         upper = mean_v + (sensitivity * std_v)
         lower = max(0.01, mean_v - (sensitivity * std_v))
         df.loc[(df['kW_Import'] > upper), 'Anomaly_Type'] = 'สูงกว่าเกณฑ์ (High)'
         df.loc[(df['kW_Import'] < lower), 'Anomaly_Type'] = 'ไฟตก (Low)'
     
     return df
+
+
+def test_single_row_anomaly_std_nan():
+    import datetime
+    df = pd.DataFrame({
+        'Clock': [pd.Timestamp('2026-10-19 12:00')],
+        'kW_Import': [10.0],
+        'kWh_15min': [2.5]
+    })
+    res = apply_tou_and_anomaly(df, sensitivity=1.0, p_start=datetime.time(9,0), p_end=datetime.time(22,0), p_rate=4.0, op_rate=2.0, holiday_list=[])
+    assert res['Anomaly_Type'].iloc[0] == 'ปกติ', "Expected anomaly type to be 'ปกติ'"
