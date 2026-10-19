@@ -8,6 +8,9 @@ class MockSt:
             return lambda f: f
         return func
 
+    def warning(self, msg):
+        pass
+
 sys.modules['streamlit'] = MockSt()
 
 import pandas as pd
@@ -102,12 +105,13 @@ class TestDataHandler(unittest.TestCase):
 
         df_out = preprocess_data(df_in)
 
-        # invalid_date is dropped, abc becomes 0 or handled, outlier is removed
+        # invalid_date is dropped, abc becomes 0 or handled, outlier is kept
         # row 0: dropped (NaT Clock)
         # row 1: kW_Import 'abc' -> becomes 0
-        # row 2: kW_Import 3000000 -> dropped (Outlier)
-        self.assertEqual(len(df_out), 1)
+        # row 2: kW_Import 3000000 -> kept (Outlier now generates a warning instead of dropping)
+        self.assertEqual(len(df_out), 2)
         self.assertEqual(df_out.iloc[0]['kW_Import'], 0) # "abc" -> 0
+        self.assertEqual(df_out.iloc[1]['kW_Import'], 3000000) # outlier kept
 
     def test_get_usage_snapshots(self):
         data = {
