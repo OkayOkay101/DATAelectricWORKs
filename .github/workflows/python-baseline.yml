@@ -6,8 +6,9 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: python-baseline-${{ github.ref }}
-  cancel-in-progress: true
+  # A newer main commit must not cancel verification of an earlier merge.
+  group: python-baseline-${{ github.event_name }}-${{ github.sha }}
+  cancel-in-progress: false
 jobs:
   python-syntax:
     name: python-syntax

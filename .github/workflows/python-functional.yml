@@ -6,8 +6,9 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: python-functional-${{ github.ref }}
-  cancel-in-progress: true
+  # Each merge commit needs its own result for the Jules post-merge gate.
+  group: python-functional-${{ github.event_name }}-${{ github.sha }}
+  cancel-in-progress: false
 jobs:
   python-functional:
     name: python-functional
