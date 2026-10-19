@@ -6,7 +6,7 @@ import datetime
 
 # --- นำเข้า (Import) โมดูลที่เราแยกไว้ ---
 from data_handler import load_file, preprocess_data, get_usage_snapshots
-from tou_analyzer import apply_tou_and_anomaly, get_color
+from tou_analyzer import apply_tou_and_anomaly
 
 @st.cache_data
 def convert_df_to_csv(df):
@@ -324,8 +324,10 @@ with tab4:
             if len(date_range) == 2:
                 start_date, end_date = date_range
                 df_summary = df_display[(df_display['Date'] >= pd.Timestamp(start_date)) & (df_display['Date'] <= pd.Timestamp(end_date))]
-            else:
+            elif len(date_range) > 0:
                 df_summary = df_display[df_display['Date'] == pd.Timestamp(date_range[0])]
+            else:
+                df_summary = df_display.iloc[:0]
         else:
             df_summary = df_display
             
@@ -424,3 +426,29 @@ def test_no_lambda_in_download_button():
                 for kw in node.keywords:
                     if kw.arg == 'data' and isinstance(kw.value, ast.Lambda):
                         raise AssertionError("st.download_button should not use lambda for data")
+
+def test_empty_date_input_index_error():
+    import ast
+    with open('app.py', 'r', encoding='utf-8') as f:
+        tree = ast.parse(f.read())
+
+    found_check = False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.If) or isinstance(node, ast.IfExp):
+            # Check for len(date_range) > 0 condition
+            if isinstance(node.test, ast.Compare):
+                if isinstance(node.test.left, ast.Call) and getattr(node.test.left.func, 'id', '') == 'len':
+                    if getattr(node.test.left.args[0], 'id', '') == 'date_range':
+                        if isinstance(node.test.ops[0], ast.Gt) and isinstance(node.test.comparators[0], ast.Constant) and node.test.comparators[0].value == 0:
+                            found_check = True
+                        elif isinstance(node.test.ops[0], ast.Eq) and isinstance(node.test.comparators[0], ast.Constant) and node.test.comparators[0].value == 2:
+                            # It could be `elif len(date_range) > 0:`
+                            for orelse in node.orelse:
+                                if isinstance(orelse, ast.If) and getattr(orelse.test, 'left', None):
+                                    if getattr(orelse.test.left, 'func', None) and getattr(orelse.test.left.func, 'id', '') == 'len':
+                                        if getattr(orelse.test.left.args[0], 'id', '') == 'date_range':
+                                            if isinstance(orelse.test.ops[0], ast.Gt) and isinstance(orelse.test.comparators[0], ast.Constant) and orelse.test.comparators[0].value == 0:
+                                                found_check = True
+
+    if not found_check:
+        raise AssertionError("Regression: len(date_range) > 0 check is missing to prevent IndexError on empty date_input")
