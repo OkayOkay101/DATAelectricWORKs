@@ -12,7 +12,7 @@ sys.modules['streamlit'] = MockSt()
 
 import pandas as pd
 import numpy as np
-from data_handler import parse_text_lines, parse_excel_df, preprocess_data
+from data_handler import parse_text_lines, parse_excel_df, preprocess_data, get_usage_snapshots
 
 class TestDataHandler(unittest.TestCase):
 
@@ -108,6 +108,42 @@ class TestDataHandler(unittest.TestCase):
         # row 2: kW_Import 3000000 -> dropped (Outlier)
         self.assertEqual(len(df_out), 1)
         self.assertEqual(df_out.iloc[0]['kW_Import'], 0) # "abc" -> 0
+
+    def test_get_usage_snapshots(self):
+        data = {
+            'Clock': pd.to_datetime([
+                "2023-01-01 00:00:00",
+                "2023-01-01 00:15:00",
+                "2023-01-01 00:30:00",
+                "2023-01-01 00:45:00",
+                "2023-01-01 01:00:00",
+                "2023-01-01 01:15:00",
+            ]),
+            'kW_Import': [0, 100, 150, 0, 50, 0]
+        }
+        df = pd.DataFrame(data)
+        snapshots = get_usage_snapshots(df)
+        self.assertEqual(len(snapshots), 2)
+
+        self.assertEqual(snapshots[0]['start_idx'], 0) # previous index (0)
+        self.assertEqual(snapshots[0]['end_idx'], 3) # ends at index 3
+
+        self.assertEqual(snapshots[1]['start_idx'], 3)
+        self.assertEqual(snapshots[1]['end_idx'], 5)
+
+    def test_get_usage_snapshots_empty(self):
+        df = pd.DataFrame()
+        snapshots = get_usage_snapshots(df)
+        self.assertEqual(len(snapshots), 0)
+
+    def test_get_usage_snapshots_no_usage(self):
+        data = {
+            'Clock': pd.to_datetime(["2023-01-01 00:00:00", "2023-01-01 00:15:00"]),
+            'kW_Import': [0, 0]
+        }
+        df = pd.DataFrame(data)
+        snapshots = get_usage_snapshots(df)
+        self.assertEqual(len(snapshots), 0)
 
 if __name__ == '__main__':
     unittest.main()
