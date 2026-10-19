@@ -100,12 +100,14 @@ with st.spinner('🔄 กำลังโหลด ประมวลผล แ�
         st.stop()
 
     df_combined = pd.concat(all_dfs, ignore_index=True)
+    num_files = len(all_dfs)
+    del all_dfs
     df_combined = df_combined.sort_values(['Clock', 'kW_Import'], ascending=[True, False]).drop_duplicates(subset=['Clock'], keep='first').reset_index(drop=True)
     
     df_master = apply_tou_and_anomaly(df_combined, sensitivity, p_start, p_end, p_rate, op_rate, holiday_list)
     snapshots = get_usage_snapshots(df_master)
     
-st.success(f"✅ วิเคราะห์ข้อมูลสำเร็จ {len(all_dfs)} ไฟล์")
+st.success(f"✅ วิเคราะห์ข้อมูลสำเร็จ {num_files} ไฟล์")
 
 # --- Snapshot Selector (Filter) ---
 with st.container(border=True):
