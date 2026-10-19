@@ -265,7 +265,8 @@ with tab3:
     df_new['Clock'] = df_new['Clock'] + pd.to_timedelta(shift_minutes, unit='m')
     df_new_recalc = apply_tou_and_anomaly(df_new, sensitivity, p_start, p_end, p_rate, op_rate, holiday_list)
     
-    st.download_button("📥 ดาวน์โหลดไฟล์ที่ปรับเวลาแล้ว (.csv)", lambda: df_new_recalc.to_csv(index=False).encode('utf-8-sig'), f"shifted_{shift_minutes}mins.csv")
+    csv_data = df_new_recalc.to_csv(index=False).encode('utf-8-sig')
+    st.download_button("📥 ดาวน์โหลดไฟล์ที่ปรับเวลาแล้ว (.csv)", csv_data, f"shifted_{shift_minutes}mins.csv")
     st.divider()
     
     dates_for_shift = ["ดูทั้งหมด (ตั้งแต่ต้นจนจบ)"] + [pd.Timestamp(d).date() for d in sorted(df_display['Date'].unique())]
@@ -404,3 +405,18 @@ with tab4:
         else:
             st.info("รอการป้อนตัวเลขจำลองเวลา... (กรุณาใส่ตัวเลขที่ไม่ใช่ 0 ในช่องด้านบน)")
 
+
+# --- Tests ---
+def test_no_lambda_in_download_button():
+    import ast
+    with open('app.py', 'r', encoding='utf-8') as f:
+        tree = ast.parse(f.read())
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == 'download_button':
+            if len(node.args) > 1 and isinstance(node.args[1], ast.Lambda):
+                raise AssertionError("st.download_button should not use lambda for data")
+            if 'data' in [kw.arg for kw in node.keywords]:
+                for kw in node.keywords:
+                    if kw.arg == 'data' and isinstance(kw.value, ast.Lambda):
+                        raise AssertionError("st.download_button should not use lambda for data")
