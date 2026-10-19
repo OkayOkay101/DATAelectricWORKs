@@ -204,7 +204,7 @@ def parse_excel_df(df_raw):
             best_col = kw_candidates[0]
             for cand in kw_candidates:
                 # ลองหาผลรวมของคอลัมน์เพื่อดูว่ามีข้อมูลจริงหรือไม่ (ถ้าเป็น 0 แสดงว่ากราฟแบน) - ⚡ Bolt: sample first 1000 rows
-                cand_sum = pd.to_numeric(df[cand].head(1000).astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce').fillna(0).sum()
+                cand_sum = pd.to_numeric(df[cand].head(1000).astype(str).str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0).sum()
                 if cand_sum > max_sum:
                     max_sum = cand_sum
                     best_col = cand
@@ -294,14 +294,14 @@ def preprocess_data(df):
     num_kw = pd.to_numeric(df['kW_Import'], errors='coerce')
     mask_kw = num_kw.isna()
     if mask_kw.any():
-        clean_str_kw = df.loc[mask_kw, 'kW_Import'].astype(str).str.replace(r'[^\d.]', '', regex=True)
+        clean_str_kw = df.loc[mask_kw, 'kW_Import'].astype(str).str.replace(r'[^\d.-]', '', regex=True)
         num_kw.loc[mask_kw] = pd.to_numeric(clean_str_kw, errors='coerce')
     df['kW_Import'] = num_kw.fillna(0)
     
     num_v = pd.to_numeric(df['Voltage'], errors='coerce')
     mask_v = num_v.isna()
     if mask_v.any():
-        clean_str_v = df.loc[mask_v, 'Voltage'].astype(str).str.replace(r'[^\d.]', '', regex=True)
+        clean_str_v = df.loc[mask_v, 'Voltage'].astype(str).str.replace(r'[^\d.-]', '', regex=True)
         num_v.loc[mask_v] = pd.to_numeric(clean_str_v, errors='coerce')
     df['Voltage'] = num_v.fillna(220.0)
     
@@ -382,3 +382,9 @@ def get_usage_snapshots(df):
         })
 
     return session_list
+
+def test_regression_negative_values():
+    import pandas as pd
+    df = pd.DataFrame({'Clock': ['01/01/2023 00:15'], 'kW_Import': ['-100,500.5'], 'Voltage': ['220']})
+    res = preprocess_data(df)
+    assert res.iloc[0]['kW_Import'] == -100500.5
