@@ -343,7 +343,7 @@ def load_file(uploaded_file, file_ext):
     return df_result
 
 @st.cache_data
-def preprocess_data(df):
+def preprocess_data(df, kw_max=2000000, v_max=2000000):
     if df is None or df.empty:
         return pd.DataFrame()
         
@@ -365,8 +365,10 @@ def preprocess_data(df):
         num_v.loc[mask_v] = pd.to_numeric(clean_str_v, errors='coerce')
     df['Voltage'] = num_v.fillna(220.0)
     
-    # ตัด Outlier
-    df = df[(df['kW_Import'] < 2000000) & (df['Voltage'] < 2000000)]
+    # ตัด Outlier (แสดงเตือนแทนการลบทิ้ง)
+    outlier_mask = (df['kW_Import'] >= kw_max) | (df['Voltage'] >= v_max)
+    if outlier_mask.any():
+        st.warning(f"พบข้อมูลที่มีค่าสูงผิดปกติ (>= {kw_max:,}) จำนวน {outlier_mask.sum()} แถว ระบบจะไม่ลบทิ้ง โปรดตรวจสอบความถูกต้อง")
     
     # แปลงเวลา
     df['Clock'] = pd.to_datetime(df['Clock'], dayfirst=True, errors='coerce')
@@ -460,3 +462,10 @@ def test_regression_space_delimiter():
     assert df is not None and not df.empty
     assert len(df) == 2
     assert df.iloc[0]['kW_Import'] == '100.5'
+
+def test_regression_high_load_outlier():
+    import pandas as pd
+    df = pd.DataFrame({'Clock': ['01/01/2023 00:15'], 'kW_Import': ['2500000'], 'Voltage': ['220']})
+    res = preprocess_data(df)
+    assert len(res) == 1
+    assert res.iloc[0]['kW_Import'] == 2500000
