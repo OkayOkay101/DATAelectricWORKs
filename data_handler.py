@@ -94,7 +94,7 @@ def parse_text_lines(lines, delimiter=','):
             for cand_idx in kw_idx_candidates:
                 cand_sum = 0
                 for line in buffered_data:
-                    parts = [p.strip() for p in line.split(delimiter)]
+                    parts = [p.strip() for p in (line.split() if delimiter == 'space' else line.split(delimiter))]
                     if cand_idx < len(parts):
                         val = parts[cand_idx].replace(',', '')
                         try:
@@ -122,7 +122,7 @@ def parse_text_lines(lines, delimiter=','):
         line = line.strip()
         if not line: continue
         
-        parts = [p.strip() for p in line.split(delimiter)]
+        parts = [p.strip() for p in (line.split() if delimiter == 'space' else line.split(delimiter))]
         
         if date_idx != -1 and date_idx < len(parts):
             d_val = parts[date_idx].lower()
@@ -388,3 +388,15 @@ def test_regression_negative_values():
     df = pd.DataFrame({'Clock': ['01/01/2023 00:15'], 'kW_Import': ['-100,500.5'], 'Voltage': ['220']})
     res = preprocess_data(df)
     assert res.iloc[0]['kW_Import'] == -100500.5
+
+def test_regression_space_delimiter():
+    import pandas as pd
+    lines = [
+        "Date Clock kW_Import Voltage",
+        "01/01/2023 00:15 100.5 220",
+        "01/01/2023 00:30 110.2 221"
+    ]
+    df = parse_text_lines(lines, delimiter='space')
+    assert df is not None and not df.empty
+    assert len(df) == 2
+    assert df.iloc[0]['kW_Import'] == '100.5'
