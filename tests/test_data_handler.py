@@ -1,4 +1,17 @@
 import unittest
+import sys
+from unittest.mock import MagicMock
+
+class MockSt:
+    def cache_data(self, func=None, **kwargs):
+        if func is None:
+            return lambda f: f
+        return func
+
+    def warning(self, msg):
+        pass
+
+sys.modules['streamlit'] = MockSt()
 
 import pandas as pd
 import numpy as np
