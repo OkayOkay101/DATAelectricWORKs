@@ -118,31 +118,91 @@ def parse_text_lines(lines, delimiter=','):
         for line in iterator:
             yield line
 
-    for line in line_generator():
-        line = line.strip()
-        if not line: continue
-        
-        parts = [p.strip() for p in (line.split() if delimiter == 'space' else line.split(delimiter))]
-        
-        if date_idx != -1 and date_idx < len(parts):
-            d_val = parts[date_idx].lower()
-            if any(x in d_val for x in ['total', 'p', 'op', 'h', 'kwh', 'nan']) or not d_val:
-                continue
-        
-        if clock_idx < len(parts):
-            c_val = parts[clock_idx].lower()
-            if any(x in c_val for x in ['total', 'p', 'op', 'h', 'kwh', 'nan', 'dnv/err']) or not c_val:
-                continue
-                
-            date_val = parts[date_idx] if date_idx != -1 and date_idx < len(parts) else ""
-            clock_val = parts[clock_idx]
-            kw_val = parts[kw_idx] if kw_idx < len(parts) else "0"
-            v_val = parts[v_idx] if v_idx != -1 and v_idx < len(parts) else "220"
+    class IteratorStream(io.TextIOBase):
+        def __init__(self, it):
+            self.it = it
+            self.leftover = ''
             
-            merged_clock = f"{date_val} {clock_val}" if date_val else clock_val
-            data_rows.append([merged_clock, kw_val, v_val])
+        def read(self, size=-1):
+            if size == -1:
+                parts = []
+                for line in self.it:
+                    line = str(line)
+                    if not line.endswith('\n'):
+                        line += '\n'
+                    parts.append(line)
+                return self.leftover + ''.join(parts)
             
-    return pd.DataFrame(data_rows, columns=['Clock', 'kW_Import', 'Voltage'])
+            res = [self.leftover]
+            current_len = len(self.leftover)
+            while current_len < size:
+                try:
+                    line = str(next(self.it))
+                    if not line.endswith('\n'):
+                        line += '\n'
+                    res.append(line)
+                    current_len += len(line)
+                except StopIteration:
+                    break
+            full_str = ''.join(res)
+            self.leftover = full_str[size:]
+            return full_str[:size]
+
+    stream = IteratorStream(line_generator())
+    sep = r'\s+' if delimiter == 'space' else delimiter
+    try:
+        df_raw = pd.read_csv(
+            stream,
+            sep=sep,
+            header=None,
+            dtype=str,
+            on_bad_lines='skip',
+            engine='python' if sep == r'\s+' else 'c'
+        )
+    except Exception:
+        return pd.DataFrame(columns=['Clock', 'kW_Import', 'Voltage'])
+
+    if df_raw.empty:
+        return pd.DataFrame(columns=['Clock', 'kW_Import', 'Voltage'])
+
+    def get_col(idx, default_val):
+        if idx != -1 and idx < len(df_raw.columns):
+            return df_raw.iloc[:, idx].fillna('').astype(str).str.strip()
+        return pd.Series([default_val] * len(df_raw))
+
+    d_col = get_col(date_idx, "")
+    c_col = get_col(clock_idx, "")
+    kw_col = get_col(kw_idx, "0").replace('', '0')
+    v_col = get_col(v_idx, "220").replace('', '220')
+
+    d_lower = d_col.str.lower()
+    c_lower = c_col.str.lower()
+
+    mask_d = pd.Series(True, index=df_raw.index)
+    if date_idx != -1:
+        has_invalid_d = d_lower.str.contains('total|p|op|h|kwh|nan', regex=True, na=False)
+        mask_d = ~(has_invalid_d | (d_lower == ''))
+
+    has_invalid_c = c_lower.str.contains('total|p|op|h|kwh|nan|dnv/err', regex=True, na=False)
+    mask_c = ~(has_invalid_c | (c_lower == ''))
+
+    valid_mask = mask_c & mask_d
+
+    valid_d = d_col[valid_mask]
+    valid_c = c_col[valid_mask]
+
+    if date_idx != -1:
+        merged_clock = (valid_d + " " + valid_c).str.strip()
+    else:
+        merged_clock = valid_c.str.strip()
+
+    out_df = pd.DataFrame({
+        'Clock': merged_clock,
+        'kW_Import': kw_col[valid_mask],
+        'Voltage': v_col[valid_mask]
+    })
+
+    return out_df.reset_index(drop=True)
 
 def parse_excel_df(df_raw):
     """สำหรับอ่านไฟล์ตาราง (Excel) หรือรับต่อจาก pd.read_csv()"""
