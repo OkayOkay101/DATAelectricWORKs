@@ -292,17 +292,18 @@ def parse_excel_df(df_raw):
 
 @st.cache_data
 def load_file(uploaded_file, file_ext):
-    bytes_data = uploaded_file.getvalue()
     df_result = None
     
     # 1. ลองใช้ Pandas โดยตั้งค่า names=range(50) 
     if df_result is None:
         try:
             try:
-                df_raw = pd.read_csv(io.BytesIO(bytes_data), encoding='utf-8-sig', names=range(50), dtype=str, low_memory=False)
+                uploaded_file.seek(0)
+                df_raw = pd.read_csv(uploaded_file, encoding='utf-8-sig', names=range(50), dtype=str, low_memory=False)
             except Exception as e:
                 logging.warning(f"Failed to read CSV with utf-8-sig: {e}")
-                df_raw = pd.read_csv(io.BytesIO(bytes_data), encoding='cp874', names=range(50), dtype=str, low_memory=False)
+                uploaded_file.seek(0)
+                df_raw = pd.read_csv(uploaded_file, encoding='cp874', names=range(50), dtype=str, low_memory=False)
             df_result = parse_excel_df(df_raw)
         except Exception as e:
             logging.warning(f"Failed to parse CSV with pandas: {e}")
@@ -312,26 +313,39 @@ def load_file(uploaded_file, file_ext):
         encodings_to_try = ['utf-8-sig', 'cp874', 'utf-16', 'utf-16le', 'tis-620']
         for enc in encodings_to_try:
             try:
-                text_stream = io.TextIOWrapper(io.BytesIO(bytes_data), encoding=enc)
+                uploaded_file.seek(0)
+                text_stream = io.TextIOWrapper(uploaded_file, encoding=enc)
                 head = text_stream.read(100)
                 if len(head) > 0 and '\x00' not in head:
-                    text_stream.seek(0)
+                    uploaded_file.seek(0)
+                    text_stream.detach()
+                    text_stream = io.TextIOWrapper(uploaded_file, encoding=enc)
                     df_result = parse_text_lines(text_stream, delimiter=',')
+                    text_stream.detach()
                     if df_result is not None and not df_result.empty:
                         break
+                else:
+                    text_stream.detach()
             except Exception as e:
                 logging.warning(f"Failed to read text lines with encoding {enc}: {e}")
+                if 'text_stream' in locals() and not text_stream.closed:
+                    try:
+                        text_stream.detach()
+                    except Exception:
+                        pass
             
     # 3. หากเป็นไฟล์ .xls (Binary) หรือ HTML 
     if df_result is None and file_ext in ['xlsx', 'xls', 'csv']:
         try:
             engine = 'openpyxl' if file_ext == 'xlsx' else 'xlrd'
-            df_raw = pd.read_excel(io.BytesIO(bytes_data), engine=engine, header=None)
+            uploaded_file.seek(0)
+            df_raw = pd.read_excel(uploaded_file, engine=engine, header=None)
             df_result = parse_excel_df(df_raw)
         except Exception as e:
             logging.warning(f"Failed to read excel with {engine}: {e}")
             try:
-                dfs = pd.read_html(io.BytesIO(bytes_data), encoding='utf-8')
+                uploaded_file.seek(0)
+                dfs = pd.read_html(uploaded_file, encoding='utf-8')
                 if dfs:
                     df_result = parse_excel_df(dfs[0])
             except Exception as e:
