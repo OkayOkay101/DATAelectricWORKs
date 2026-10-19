@@ -46,6 +46,17 @@ def apply_tou_and_anomaly(df, sensitivity, p_start, p_end, p_rate, op_rate, holi
         upper = mean_v + (sensitivity * std_v)
         lower = max(0.01, mean_v - (sensitivity * std_v))
         df.loc[(df['kW_Import'] > upper), 'Anomaly_Type'] = 'สูงกว่าเกณฑ์ (High)'
-        df.loc[(df['kW_Import'] < lower), 'Anomaly_Type'] = 'ไฟตก (Low)'
+        df.loc[(df['kW_Import'] < lower) & (df['kW_Import'] > 0), 'Anomaly_Type'] = 'ไฟตก (Low)'
     
     return df
+
+def test_regression_0_kw_is_normal():
+    import pandas as pd
+    from datetime import time
+    df = pd.DataFrame({
+        'Clock': [pd.Timestamp('2026-10-19 12:00:00')] * 10,
+        'kW_Import': [10.0] * 9 + [0.0],
+        'kWh_15min': [2.5] * 10
+    })
+    result = apply_tou_and_anomaly(df, 0.5, time(9), time(22), 5.0, 2.0, [])
+    assert result['Anomaly_Type'].iloc[9] == 'ปกติ', "Expected 0 kW to be classified as 'ปกติ'"
