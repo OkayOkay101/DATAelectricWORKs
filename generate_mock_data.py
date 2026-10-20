@@ -60,5 +60,27 @@ def generate_mock_data():
 
     print("Mock datasets generated successfully in 'mock_data' folder.")
 
+import unittest
+from unittest.mock import patch
+
+class TestMockDataGeneration(unittest.TestCase):
+    @patch("pandas.DataFrame.to_csv", autospec=True)
+    @patch("pandas.DataFrame.to_excel", autospec=True)
+    @patch("os.makedirs")
+    def test_non_negative_load_limits(self, mock_makedirs, mock_to_excel, mock_to_csv):
+        captured_dataframes = []
+
+        def fake_to_csv(self_df, *args, **kwargs):
+            captured_dataframes.append(self_df.copy())
+
+        mock_to_csv.side_effect = fake_to_csv
+
+        generate_mock_data()
+
+        self.assertTrue(len(captured_dataframes) > 0)
+
+        df = captured_dataframes[0]
+        self.assertTrue((df["kW_Import"] >= 0).all(), "Negative kW_Import found")
+
 if __name__ == "__main__":
     generate_mock_data()
