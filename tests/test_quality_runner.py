@@ -29,6 +29,12 @@ class RunnerTests(unittest.TestCase):
     def test_target_report_is_not_accepted_as_phase_output(self):
         self.assertEqual(runner.read_phase_output('{"status":"PASSED"}', 0)['test_count'], 0)
 
+    def test_a_spliced_result_marker_remains_untrusted(self):
+        result = {'test_ids': ['case'], 'test_count': 1, 'skipped_count': 0, 'failures': 1, 'errors': 0}
+        parsed = runner.read_phase_output('FQUALITY_RESULT=' + json.dumps(result), 1)
+        self.assertEqual(parsed['test_count'], 0)
+        self.assertEqual(parsed['errors'], 1)
+
     def test_container_has_no_host_report_mount(self):
         command = runner.container_command('image', Path('/snapshot'), Path('/driver.py'), [])
         self.assertNotIn('quality-report.json', ' '.join(command))

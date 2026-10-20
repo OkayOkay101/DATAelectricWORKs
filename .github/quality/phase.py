@@ -24,7 +24,9 @@ def main():
             else:
                 ids.append(test.id())
     collect(suite)
-    result = unittest.TextTestRunner(stream=sys.stderr, verbosity=1).run(suite)
+    # Docker multiplexes stdout/stderr and can splice progress into the JSON
+    # marker (FQUALITY_RESULT=...). Keep ordered runner output on one stream.
+    result = unittest.TextTestRunner(stream=sys.stdout, verbosity=1).run(suite)
     print('QUALITY_RESULT=' + json.dumps({'test_ids': ids, 'test_count': result.testsRun,
         'skipped_count': len(result.skipped), 'failures': len(result.failures), 'errors': len(result.errors)}))
     return 0 if result.wasSuccessful() else 1
