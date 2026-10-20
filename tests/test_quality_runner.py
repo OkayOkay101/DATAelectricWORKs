@@ -48,8 +48,13 @@ class RunnerTests(unittest.TestCase):
             base = git('rev-parse', 'HEAD')
             (repo / 'calc.py').write_text('def plus(a,b):\n return a + b\n')
             (repo / 'tests').mkdir()
-            (repo / 'tests/test_calc.py').write_text('import unittest\nfrom calc import plus\n'
-                'class Case(unittest.TestCase):\n def test_add(self):\n  self.assertEqual(plus(2,3),5)\n')
+            (repo / 'tests/test_calc.py').write_text('import unittest, os\nfrom pathlib import Path\nfrom calc import plus\n'
+                'class Case(unittest.TestCase):\n def test_add(self):\n  self.assertEqual(plus(2,3),5)\n'
+                ' def test_host_report_and_credentials_are_inaccessible(self):\n'
+                '  self.assertNotIn("GITHUB_TOKEN", os.environ)\n'
+                '  self.assertNotIn("QUALITY_REQUEST", os.environ)\n'
+                '  with self.assertRaises(OSError): Path("/reports/quality-report.json").write_text("forged")\n'
+                '  with self.assertRaises(OSError): Path("/workspace/quality-report.json").write_text("forged")\n')
             git('add', '.')
             git('-c', 'user.name=fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'candidate')
             head = git('rev-parse', 'HEAD')
