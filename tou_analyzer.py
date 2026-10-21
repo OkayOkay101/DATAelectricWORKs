@@ -1,13 +1,15 @@
 import pandas as pd
+import streamlit as st
 
-def apply_tou_and_anomaly(df, sensitivity, p_start, p_end, p_rate, op_rate, holiday_list):
-    """วิเคราะห์สถานะ TOU (Peak, Off-Peak, Holiday) และตรวจสอบไฟตกไฟเกินตามเงื่อนไขใหม่"""
+@st.cache_data
+def _apply_tou_and_anomaly_cached(df, sensitivity, p_start, p_end, p_rate, op_rate, holiday_tuple):
+    """วิเคราะห์สถานะ TOU (Peak, Off-Peak, Holiday) และตรวจสอบไฟตกไฟเกินตามเงื่อนไขใหม่ (เวอร์ชัน Cache)"""
     df = df.copy()
     
     df['Is_Weekend'] = df['Clock'].dt.weekday >= 5
     
     # ⚡ Bolt Optimization: Use vectorized normalize() instead of slow strftime()
-    holiday_dt = pd.to_datetime(holiday_list, errors='coerce')
+    holiday_dt = pd.to_datetime(holiday_tuple, errors='coerce')
     df['Is_Holiday'] = df['Clock'].dt.normalize().isin(holiday_dt)
 
     # ⚡ Bolt Optimization: Use total seconds from midnight instead of slow dt.time object creation
@@ -51,6 +53,12 @@ def apply_tou_and_anomaly(df, sensitivity, p_start, p_end, p_rate, op_rate, holi
         df.loc[(df['kW_Import'] < lower), 'Anomaly_Type'] = 'ไฟตก (Low)'
     
     return df
+
+def apply_tou_and_anomaly(df, sensitivity, p_start, p_end, p_rate, op_rate, holiday_list):
+    """วิเคราะห์สถานะ TOU (Peak, Off-Peak, Holiday) และตรวจสอบไฟตกไฟเกินตามเงื่อนไขใหม่"""
+    # แปลง holiday_list เป็น tuple เพื่อให้เป็นอาร์กิวเมนต์ที่สามารถ Hash ได้สำหรับ st.cache_data
+    holiday_tuple = tuple(holiday_list) if isinstance(holiday_list, list) else holiday_list
+    return _apply_tou_and_anomaly_cached(df, sensitivity, p_start, p_end, p_rate, op_rate, holiday_tuple)
 
 
 def test_single_row_anomaly_std_nan():
