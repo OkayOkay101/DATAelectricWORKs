@@ -1,3 +1,4 @@
+import logging
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -98,7 +99,8 @@ with st.spinner('🔄 กำลังโหลด ประมวลผล แ�
             else:
                 st.toast(f"⚠️ ข้ามไฟล์ '{file.name}' (ไม่มีข้อมูลเวลา)", icon="⚠️")
         except Exception as e:
-            st.toast(f"❌ อ่านไฟล์ '{file.name}' ไม่ได้: {e}", icon="❌")
+            logging.error(f"Error reading file '{file.name}': {e}", exc_info=True)
+            st.toast(f"❌ อ่านไฟล์ '{file.name}' ไม่ได้", icon="❌")
 
     if not all_dfs:
         st.error("⚠️ ไม่มีข้อมูลที่สามารถนำมาวิเคราะห์ได้เลย โปรดตรวจสอบไฟล์ที่อัปโหลด")
@@ -465,3 +467,17 @@ def test_no_hardcoded_default_holidays():
                     if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
                         if "2026-" in node.value.value:
                             raise AssertionError("Regression: default_holidays is hardcoded.")
+
+def test_no_exception_leakage_in_toast():
+    import ast
+    with open('app.py', 'r', encoding='utf-8') as f:
+        tree = ast.parse(f.read())
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and getattr(node.func, 'attr', '') == 'toast':
+            for arg in node.args:
+                if isinstance(arg, ast.JoinedStr):
+                    for val in arg.values:
+                        if isinstance(val, ast.FormattedValue):
+                            if isinstance(val.value, ast.Name) and val.value.id == 'e':
+                                raise AssertionError("Regression: Exception object leaked to UI via st.toast")
