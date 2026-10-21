@@ -335,7 +335,7 @@ def load_file(uploaded_file, file_ext):
                         pass
             
     # 3. หากเป็นไฟล์ .xls (Binary) หรือ HTML 
-    if df_result is None and file_ext in ['xlsx', 'xls', 'csv']:
+    if df_result is None and file_ext in ['xlsx', 'xls']:
         try:
             engine = 'openpyxl' if file_ext == 'xlsx' else 'xlrd'
             uploaded_file.seek(0)
