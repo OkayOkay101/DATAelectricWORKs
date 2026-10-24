@@ -6,16 +6,21 @@ on:
 permissions:
   contents: read
 concurrency:
+  # A newer main commit must not cancel verification of an earlier merge.
   group: python-baseline-${{ github.event_name }}-${{ github.sha }}
   cancel-in-progress: false
 jobs:
   python-syntax:
     name: python-syntax
-    runs-on: [self-hosted, Windows, dataelectric-ci]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Parse source syntax without importing application code
-        run: py -3.12 scripts/check_python_syntax.py
+        run: python scripts/check_python_syntax.py
