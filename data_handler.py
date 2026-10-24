@@ -4,6 +4,10 @@ import numpy as np
 import io
 import logging
 
+# ค่าคงที่สำหรับกรองข้อมูลที่ผิดปกติ (Outliers)
+DEFAULT_OUTLIER_KW_MAX = 2000000
+DEFAULT_OUTLIER_V_MAX = 2000000
+
 
 def is_header_row(row_str):
     l_lower = row_str.lower()
@@ -357,7 +361,7 @@ def load_file(uploaded_file, file_ext):
     return df_result
 
 @st.cache_data
-def preprocess_data(df, kw_max=2000000, v_max=2000000):
+def preprocess_data(df, kw_max=DEFAULT_OUTLIER_KW_MAX, v_max=DEFAULT_OUTLIER_V_MAX):
     if df is None or df.empty:
         return pd.DataFrame()
         
