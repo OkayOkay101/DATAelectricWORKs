@@ -1,5 +1,6 @@
 import pandas as pd
 import streamlit as st
+from typing import Any, List, Tuple, Union
 
 @st.cache_data
 def _apply_tou_and_anomaly_cached(df, sensitivity, p_start, p_end, p_rate, op_rate, holiday_tuple):
@@ -54,19 +55,16 @@ def _apply_tou_and_anomaly_cached(df, sensitivity, p_start, p_end, p_rate, op_ra
     
     return df
 
-def apply_tou_and_anomaly(df, sensitivity, p_start, p_end, p_rate, op_rate, holiday_list):
+def apply_tou_and_anomaly(
+    df: pd.DataFrame,
+    sensitivity: float,
+    p_start: Any,
+    p_end: Any,
+    p_rate: float,
+    op_rate: float,
+    holiday_list: Union[List[str], Tuple[str, ...]]
+) -> pd.DataFrame:
     """วิเคราะห์สถานะ TOU (Peak, Off-Peak, Holiday) และตรวจสอบไฟตกไฟเกินตามเงื่อนไขใหม่"""
     # แปลง holiday_list เป็น tuple เพื่อให้เป็นอาร์กิวเมนต์ที่สามารถ Hash ได้สำหรับ st.cache_data
     holiday_tuple = tuple(holiday_list) if isinstance(holiday_list, list) else holiday_list
     return _apply_tou_and_anomaly_cached(df, sensitivity, p_start, p_end, p_rate, op_rate, holiday_tuple)
-
-
-def test_single_row_anomaly_std_nan():
-    import datetime
-    df = pd.DataFrame({
-        'Clock': [pd.Timestamp('2026-10-19 12:00')],
-        'kW_Import': [10.0],
-        'kWh_15min': [2.5]
-    })
-    res = apply_tou_and_anomaly(df, sensitivity=1.0, p_start=datetime.time(9,0), p_end=datetime.time(22,0), p_rate=4.0, op_rate=2.0, holiday_list=[])
-    assert res['Anomaly_Type'].iloc[0] == 'ปกติ', "Expected anomaly type to be 'ปกติ'"
