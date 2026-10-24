@@ -19,4 +19,4 @@ jobs:
         with:
           persist-credentials: false
       - name: Parse source syntax without importing application code
-        run: python scripts/check_python_syntax.py
+        run: py -3.12 scripts/check_python_syntax.py
