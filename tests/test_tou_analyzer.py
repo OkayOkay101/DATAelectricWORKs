@@ -34,7 +34,7 @@ class TouFunctionalTests(unittest.TestCase):
     def test_weekend_and_explicit_holiday_override_peak(self):
         result = analyze(readings(['2026-10-17 12:00', '2026-10-18 12:00',
                                    '2026-10-19 12:00', '2026-10-20 12:00']),
-                         holidays=['2026-10-19'])
+                          holidays=['2026-10-19'])
         self.assertEqual(result['Period_Detail'].tolist(),
                          ['Holiday', 'Holiday', 'Holiday', 'On-Peak'])
         self.assertEqual(result['Cost_THB'].tolist(), [2.0, 2.0, 2.0, 5.0])
@@ -97,6 +97,16 @@ class TouFunctionalTests(unittest.TestCase):
         result = analyze(frame, sensitivity=0.5)
         # The 0.0 value should be classified as 'ไฟตก (Low)'
         self.assertEqual(result['Anomaly_Type'].iloc[9], 'ไฟตก (Low)')
+
+    def test_single_row_anomaly_std_nan(self):
+        import datetime
+        df = pd.DataFrame({
+            'Clock': [pd.Timestamp('2026-10-19 12:00')],
+            'kW_Import': [10.0],
+            'kWh_15min': [2.5]
+        })
+        res = apply_tou_and_anomaly(df, sensitivity=1.0, p_start=datetime.time(9, 0), p_end=datetime.time(22, 0), p_rate=4.0, op_rate=2.0, holiday_list=[])
+        self.assertEqual(res['Anomaly_Type'].iloc[0], 'ปกติ')
 
 
 if __name__ == '__main__':
