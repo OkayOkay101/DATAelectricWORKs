@@ -1,3 +1,6 @@
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import unittest
 import sys
 from unittest.mock import MagicMock
@@ -62,6 +65,18 @@ class TestDataHandler(unittest.TestCase):
         self.assertEqual(len(df), 1)
         self.assertEqual(df.iloc[0]['Clock'], "01/01/2023 00:15")
         self.assertEqual(df.iloc[0]['kW_Import'], 200)
+
+    def test_parse_excel_df_non_string_headers(self):
+        # DataFrame with integer or float headers in metadata rows
+        df_raw = pd.DataFrame([
+            [123, 456.78, None],
+            ["Clock", "Import kW", "Voltage"],
+            ["01/01/2023 00:15", 200, 225],
+        ])
+        df = parse_excel_df(df_raw)
+        self.assertIsNotNone(df)
+        self.assertEqual(list(df.columns), ['Clock', 'kW_Import', 'Voltage'])
+        self.assertEqual(len(df), 1)
 
     def test_preprocess_data(self):
         # Initial DataFrame mimicking output of parse_text_lines / parse_excel_df

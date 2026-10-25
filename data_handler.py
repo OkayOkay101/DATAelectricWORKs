@@ -10,6 +10,8 @@ DEFAULT_OUTLIER_V_MAX = 2000000
 
 
 def is_header_row(row_str):
+    if not isinstance(row_str, str):
+        row_str = str(row_str) if row_str is not None else ""
     l_lower = row_str.lower()
     return (('clock' in l_lower and 'import' in l_lower) or
            ('ch1' in l_lower and 'ch4' in l_lower) or
@@ -237,7 +239,8 @@ def parse_excel_df(df_raw):
     kw_candidates = []
     
     for c in df.columns:
-        c_clean = c.replace(' ', '').replace('.', '').replace('_', '').replace('(', '').replace(')', '').replace('\n', '')
+        c_str = str(c)
+        c_clean = c_str.replace(' ', '').replace('.', '').replace('_', '').replace('(', '').replace(')', '').replace('\n', '')
         
         if c_clean == 'date' or 'วันที่' in c_clean: 
             date_col = c
@@ -389,7 +392,7 @@ def preprocess_data(df, kw_max=DEFAULT_OUTLIER_KW_MAX, v_max=DEFAULT_OUTLIER_V_M
         st.warning(f"พบข้อมูลที่มีค่าสูงผิดปกติ (>= {kw_max:,}) จำนวน {outlier_mask.sum()} แถว ระบบจะไม่ลบทิ้ง โปรดตรวจสอบความถูกต้อง")
     
     # แปลงเวลา
-    df['Clock'] = pd.to_datetime(df['Clock'], dayfirst=True, errors='coerce')
+    df['Clock'] = pd.to_datetime(df['Clock'], dayfirst=True, errors='coerce', format='mixed')
     df = df.dropna(subset=['Clock']).reset_index(drop=True)
     
     # ป้องกันไฟล์ทับกัน
@@ -440,7 +443,7 @@ def get_usage_snapshots(df):
 
     clock_series = df['Clock']
     if not pd.api.types.is_datetime64_any_dtype(clock_series):
-        clock_series = pd.to_datetime(clock_series)
+        clock_series = pd.to_datetime(clock_series, errors='coerce', format='mixed')
 
     # Fast vectorized format %d/%m/%y %H:%M -> e.g. 2026-01-01 00:00:00 -> 01/01/26 00:00
     c_str = clock_series.astype(str)

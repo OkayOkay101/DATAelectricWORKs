@@ -167,7 +167,7 @@ with tab1:
         if not low_all.empty: fig_all.add_trace(go.Scatter(x=low_all['Clock'], y=low_all['kW_Import'], mode='markers', name='ไฟตก', marker=dict(color='blue', size=8)))
 
     fig_all.update_layout(height=400, margin=dict(l=20, r=20, t=40, b=20), template="plotly_white", hovermode="x unified")
-    st.plotly_chart(fig_all, use_container_width=True)
+    st.plotly_chart(fig_all, width='stretch')
     if rate_type == "TOU (Time of Use)":
         st.info("💡 สีส้ม = On-Peak | สีเขียว = Off-Peak (กลางคืน/เสาร์-อาทิตย์) | สีเหลือง = Holiday (วันหยุดราชการ)")
     else:
@@ -177,13 +177,13 @@ with tab1:
     fig_kw_each = go.Figure()
     fig_kw_each.add_trace(go.Bar(x=df_display['Clock'], y=df_display['kW_Import'], marker_color="#457b9d", name="kW"))
     fig_kw_each.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20), template="plotly_white", hovermode="x unified")
-    st.plotly_chart(fig_kw_each, use_container_width=True)
+    st.plotly_chart(fig_kw_each, width='stretch')
 
     st.subheader("พลังงานไฟฟ้า (kWh) ราย 15 นาที")
     fig_kwh_each = go.Figure()
     fig_kwh_each.add_trace(go.Bar(x=df_display['Clock'], y=df_display['kWh_15min'], marker_color="#2a9d8f", name="kWh"))
     fig_kwh_each.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20), template="plotly_white", hovermode="x unified")
-    st.plotly_chart(fig_kwh_each, use_container_width=True)
+    st.plotly_chart(fig_kwh_each, width='stretch')
 
     st.subheader("📊 กราฟพลังงานไฟฟ้ารวมรายวัน (Daily Total kWh)")
     df_daily_kwh = df_display.groupby('Date')['kWh_15min'].sum().reset_index()
@@ -201,7 +201,7 @@ with tab1:
     ))
     fig_daily_kwh.update_layout(height=400, margin=dict(l=20, r=20, t=40, b=20), template="plotly_white", hovermode="x unified", xaxis=dict(type='category'), yaxis=dict(range=[0, max_kwh * 1.15]))
     fig_daily_kwh.update_yaxes(showgrid=True, gridcolor='lightgrey', griddash='dot')
-    st.plotly_chart(fig_daily_kwh, use_container_width=True)
+    st.plotly_chart(fig_daily_kwh, width='stretch')
 
     st.subheader("📋 ตารางพลังงานไฟฟ้ารวมรายวัน (Daily Total kWh)")
     df_daily_table = df_daily_kwh.copy()
@@ -209,7 +209,7 @@ with tab1:
     
     st.dataframe(
         df_daily_table,
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
         column_config={
             "วันที่ (Date)": st.column_config.DateColumn("วันที่ (Date)"),
@@ -237,7 +237,7 @@ with tab2:
         st.write("")
         summary_daily = day_df.groupby('Period_Detail')[['kW_Import', 'kWh_15min', 'Cost_THB']].sum().reset_index()
         summary_daily.columns = ['สถานะ (Period)', 'โหลดรวม (kW)', 'พลังงานรวม (kWh)', 'ค่าไฟฟ้า (บาท)']
-        st.dataframe(summary_daily, use_container_width=True, hide_index=True)
+        st.dataframe(summary_daily, width='stretch', hide_index=True)
 
         fig_15min = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.05, 
                                   subplot_titles=("พลังงาน (kW)", "พลังงานทุก 15 นาที (kWh)", "แรงดันไฟฟ้า (V)", "ประมาณการค่าไฟฟ้าราย 15 นาที (THB)"))
@@ -255,10 +255,10 @@ with tab2:
         fig_15min.add_trace(go.Bar(x=day_df['Clock'], y=day_df['Cost_THB'], marker_color="#8338ec", name="THB"), row=4, col=1)
         
         fig_15min.update_layout(height=900, template="plotly_white", hovermode="x unified", showlegend=False, margin=dict(l=20, r=20, t=40, b=20))
-        st.plotly_chart(fig_15min, use_container_width=True)
+        st.plotly_chart(fig_15min, width='stretch')
 
         st.markdown(f"#### 📋 ตารางข้อมูลดิบประจำวันที่ {sel_date}")
-        st.dataframe(day_df[['Clock', 'kW_Import', 'kWh_15min', 'Voltage', 'Period_Detail', 'Rate_THB', 'Cost_THB', 'Anomaly_Type']].reset_index(drop=True), use_container_width=True)
+        st.dataframe(day_df[['Clock', 'kW_Import', 'kWh_15min', 'Voltage', 'Period_Detail', 'Rate_THB', 'Cost_THB', 'Anomaly_Type']].reset_index(drop=True), width='stretch')
 
 # ------------------------------------------
 # TAB 3: จำลองเลื่อนเวลา (กราฟเปรียบเทียบ)
@@ -291,7 +291,7 @@ with tab3:
     fig_compare.add_trace(go.Scatter(x=plot_old['Clock'], y=plot_old['kW_Import'], mode='lines+markers', name='เก่า (Original)', line=dict(color='#1d3557', width=3)))
     fig_compare.add_trace(go.Scatter(x=plot_new['Clock'], y=plot_new['kW_Import'], mode='lines+markers', name=f'ใหม่ (Shifted {shift_minutes} นาที)', line=dict(color='#e63946', width=2.5, dash='dash')))
     fig_compare.update_layout(title=title_text, height=500, template="plotly_white", hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-    st.plotly_chart(fig_compare, use_container_width=True)
+    st.plotly_chart(fig_compare, width='stretch')
 
 # ------------------------------------------
 # TAB 4: สรุปข้อมูล และ ค่าไฟฟ้า
@@ -410,7 +410,7 @@ with tab4:
                 st.info(f"**⚡ อัตราเดียว (Single Rate)** ({single_rate} บาท/หน่วย)\n\n⚡ **พลังงานรวมทั้งหมด:** {sim_total_kwh:,.2f} kWh\n\n💰 **เป็นเงินประเมินทั้งหมด:** ฿ {sim_total_cost:,.2f}")
             
             st.write("📋 **ข้อมูลดิบหลังจำลอง**")
-            st.dataframe(df_sim[['Clock', 'kW_Import', 'Period_Detail', 'Cost_THB']].reset_index(drop=True), use_container_width=True, height=200)
+            st.dataframe(df_sim[['Clock', 'kW_Import', 'Period_Detail', 'Cost_THB']].reset_index(drop=True), width='stretch', height=200)
         else:
             st.info("รอการป้อนตัวเลขจำลองเวลา... (กรุณาใส่ตัวเลขที่ไม่ใช่ 0 ในช่องด้านบน)")
 
