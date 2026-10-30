@@ -119,6 +119,19 @@ class TestApp(unittest.TestCase):
             self.assertEqual(raw_table.value.columns.tolist(), expected_columns)
             self.assertIn('"hidden": true', raw_table.proto.columns)
 
+            # Verify Tab 3 (Shift Graph) comparison metrics
+            self.assertIn("🔥 โหลดสูงสุดเปรียบเทียบ (Peak)", metrics, "Shift graph peak demand metric missing")
+            self.assertIn("⚡ พลังงานช่วง On-Peak", metrics, "Shift graph on-peak energy metric missing")
+            self.assertIn("💰 ค่าไฟฟ้าประเมินเปรียบเทียบ", metrics, "Shift graph cost metric missing")
+            self.assertIn("⏱️ เวลาที่จำลองเลื่อน", metrics, "Shift graph shift duration metric missing")
+            self.assertEqual(metrics["🔥 โหลดสูงสุดเปรียบเทียบ (Peak)"], "110.00 kW")
+            self.assertEqual(metrics["⏱️ เวลาที่จำลองเลื่อน"], "+15 นาที")
+
+            # Verify Tab 3 download button has help tooltip
+            tab3_dl_buttons = [db for db in at.download_button if "📥 ดาวน์โหลดไฟล์ที่ปรับเวลาแล้ว (.csv)" in db.label]
+            self.assertEqual(len(tab3_dl_buttons), 1, "Expected Tab 3 download button")
+            self.assertTrue(tab3_dl_buttons[0].help and "CSV" in tab3_dl_buttons[0].help, "Expected Tab 3 download button help tooltip")
+
             # Find number inputs to change shift minutes
             # App.py has: shift_mins_sim = st.number_input("⏱️ ใส่เวลาที่เลื่อน (นาที):", ...)
             # We assume it is one of the number_inputs

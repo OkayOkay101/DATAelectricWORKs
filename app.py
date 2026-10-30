@@ -320,20 +320,26 @@ with tab2:
 # ------------------------------------------
 with tab3:
     st.subheader("🔄 ระบบจำลองการเลื่อนช่วงเวลาและเปรียบเทียบ")
-    shift_minutes = st.number_input("⏱️ จำนวนนาทีที่ต้องการเลื่อน (ปรับทีละ 15 นาที, ค่าบวก=เลื่อนไปข้างหน้า, ค่าลบ=ถอยหลัง)", value=15, step=15)
+    
+    with st.container(border=True):
+        col_s1, col_s2 = st.columns([1, 1])
+        with col_s1:
+            shift_minutes = st.number_input(
+                "⏱️ จำนวนนาทีที่ต้องการเลื่อน (ปรับทีละ 15 นาที, ค่าบวก=เลื่อนไปข้างหน้า, ค่าลบ=ถอยหลัง)",
+                value=15,
+                step=15,
+                help="ค่าบวก (+) = เลื่อนเวลาไปข้างหน้า, ค่าลบ (-) = เลื่อนเวลาถอยหลัง"
+            )
+        with col_s2:
+            dates_for_shift = ["ดูทั้งหมด (ตั้งแต่ต้นจนจบ)"] + [pd.Timestamp(d).date() for d in sorted(df_display['Date'].unique())]
+            view_date = st.selectbox("📅 เลือกรูปแบบการเปรียบเทียบกราฟ", dates_for_shift, key="shift_date_selector")
     
     df_new = df_display.copy()
     df_new['Original_Clock'] = df_new['Clock'] 
     df_new['Clock'] = df_new['Clock'] + pd.to_timedelta(shift_minutes, unit='m')
+    df_new['Date'] = df_new['Clock'].dt.normalize()
     df_new_recalc = apply_tou_and_anomaly(df_new, sensitivity, p_start, p_end, p_rate, op_rate, holiday_list)
-    
-    csv_data = convert_df_to_csv(df_new_recalc)
-    st.download_button("📥 ดาวน์โหลดไฟล์ที่ปรับเวลาแล้ว (.csv)", csv_data, f"shifted_{shift_minutes}mins.csv")
-    st.divider()
-    
-    dates_for_shift = ["ดูทั้งหมด (ตั้งแต่ต้นจนจบ)"] + [pd.Timestamp(d).date() for d in sorted(df_display['Date'].unique())]
-    view_date = st.selectbox("📅 เลือกรูปแบบการเปรียบเทียบกราฟ", dates_for_shift, key="shift_date_selector")
-    
+
     if view_date == "ดูทั้งหมด (ตั้งแต่ต้นจนจบ)":
         plot_old, plot_new = df_display.sort_values('Clock'), df_new_recalc.sort_values('Clock')
         title_text = "กราฟเส้นเปรียบเทียบข้อมูลเดิม เทียบกับ ข้อมูลใหม่ (ทั้งหมด)"
@@ -341,12 +347,72 @@ with tab3:
         plot_old = df_display[df_display['Date'] == pd.Timestamp(view_date)].sort_values('Clock')
         plot_new = df_new_recalc[df_new_recalc['Original_Clock'].dt.normalize() == pd.Timestamp(view_date)].sort_values('Clock')
         title_text = f"กราฟเส้นเปรียบเทียบข้อมูลเดิม เทียบกับ ข้อมูลใหม่ ประจำวันที่ {view_date}"
-    
+
+    peak_old = plot_old['kW_Import'].max() if not plot_old.empty else 0.0
+    peak_new = plot_new['kW_Import'].max() if not plot_new.empty else 0.0
+    diff_peak = peak_new - peak_old
+
+    cost_old = plot_old['Cost_THB'].sum() if not plot_old.empty else 0.0
+    cost_new = plot_new['Cost_THB'].sum() if not plot_new.empty else 0.0
+    diff_cost = cost_new - cost_old
+
+    onpeak_old = plot_old[plot_old['Period_Detail'] == 'On-Peak']['kWh_15min'].sum() if not plot_old.empty else 0.0
+    onpeak_new = plot_new[plot_new['Period_Detail'] == 'On-Peak']['kWh_15min'].sum() if not plot_new.empty else 0.0
+    diff_onpeak = onpeak_new - onpeak_old
+
+    with st.container(border=True):
+        st.markdown("#### ⚡ สรุปผลกระทบจากการเลื่อนเวลา (Before vs After)")
+        mc1, mc2, mc3, mc4 = st.columns(4)
+        mc1.metric(
+            "🔥 โหลดสูงสุดเปรียบเทียบ (Peak)",
+            f"{peak_new:,.2f} kW",
+            delta=f"{diff_peak:,.2f} kW",
+            delta_color="inverse",
+            help="กำลังไฟฟ้าสูงสุดหลังเลื่อนเวลา เทียบกับก่อนเลื่อน (เดิม: {:,.2f} kW)".format(peak_old)
+        )
+        mc2.metric(
+            "⚡ พลังงานช่วง On-Peak",
+            f"{onpeak_new:,.2f} kWh",
+            delta=f"{diff_onpeak:,.2f} kWh",
+            delta_color="inverse",
+            help="ปริมาณพลังงาน On-Peak หลังเลื่อนเวลา เทียบกับก่อนเลื่อน (เดิม: {:,.2f} kWh)".format(onpeak_old)
+        )
+        mc3.metric(
+            "💰 ค่าไฟฟ้าประเมินเปรียบเทียบ",
+            f"฿ {cost_new:,.2f}",
+            delta=f"{diff_cost:,.2f} ฿",
+            delta_color="inverse",
+            help="ค่าไฟฟ้าประเมินหลังเลื่อนเวลา เทียบกับก่อนเลื่อน (เดิม: ฿ {:,.2f})".format(cost_old)
+        )
+        mc4.metric(
+            "⏱️ เวลาที่จำลองเลื่อน",
+            f"{shift_minutes:+d} นาที" if shift_minutes != 0 else "0 นาที (เวลาเดิม)",
+            help="ระยะเวลาที่เลื่อน (ค่าบวก=เลื่อนไปข้างหน้า, ค่าลบ=ถอยหลัง)"
+        )
+
     fig_compare = go.Figure()
     fig_compare.add_trace(go.Scatter(x=plot_old['Clock'], y=plot_old['kW_Import'], mode='lines+markers', name='เก่า (Original)', line=dict(color='#1d3557', width=3)))
     fig_compare.add_trace(go.Scatter(x=plot_new['Clock'], y=plot_new['kW_Import'], mode='lines+markers', name=f'ใหม่ (Shifted {shift_minutes} นาที)', line=dict(color='#e63946', width=2.5, dash='dash')))
-    fig_compare.update_layout(title=title_text, height=500, template="plotly_white", hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+    fig_compare.update_layout(
+        title=title_text,
+        xaxis_title="วัน-เวลา (Timestamp)",
+        yaxis_title="กำลังไฟฟ้า (kW)",
+        height=500,
+        template="plotly_white",
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
     st.plotly_chart(fig_compare, width='stretch')
+    st.caption("💡 กราฟเส้นสีน้ำเงินเข้มแสดงข้อมูลเดิม และเส้นประสีแดงแสดงข้อมูลหลังเลื่อนเวลา สามารถลากเมาส์เพื่อซูมดูช่วงเวลาที่ต้องการได้")
+
+    csv_data = convert_df_to_csv(df_new_recalc)
+    st.download_button(
+        label="📥 ดาวน์โหลดไฟล์ที่ปรับเวลาแล้ว (.csv)",
+        data=csv_data,
+        file_name=f"shifted_{shift_minutes}mins.csv",
+        mime="text/csv",
+        help="ดาวน์โหลดข้อมูล Load Profile ที่ปรับเวลาแล้วในรูปแบบไฟล์ CSV"
+    )
 
 # ------------------------------------------
 # TAB 4: สรุปข้อมูล และ ค่าไฟฟ้า
