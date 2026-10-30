@@ -6,7 +6,7 @@ import streamlit as st
 import datetime
 
 # --- นำเข้า (Import) โมดูลที่เราแยกไว้ ---
-from data_handler import load_file, preprocess_data, get_usage_snapshots, sanitize_dataframe_for_csv
+from data_handler import load_file, preprocess_data, get_usage_snapshots, sanitize_dataframe_for_csv, sanitize_filename
 from tou_analyzer import apply_tou_and_anomaly
 
 @st.cache_data
@@ -90,17 +90,18 @@ if not uploaded_files:
 with st.spinner('🔄 กำลังโหลด ประมวลผล และเชื่อมต่อข้อมูล...'):
     all_dfs = []
     for file in uploaded_files:
-        file_ext = file.name.rsplit('.', 1)[-1].lower() if '.' in file.name else ''
+        safe_filename = sanitize_filename(getattr(file, 'name', ''))
+        file_ext = safe_filename.rsplit('.', 1)[-1].lower() if '.' in safe_filename else ''
         try:
             df_raw = load_file(file, file_ext)
             df_base = preprocess_data(df_raw)
             if not df_base.empty and 'Clock' in df_base.columns:
                 all_dfs.append(df_base)
             else:
-                st.toast(f"⚠️ ข้ามไฟล์ '{file.name}' (ไม่มีข้อมูลเวลา)", icon="⚠️")
+                st.toast(f"⚠️ ข้ามไฟล์ '{safe_filename}' (ไม่มีข้อมูลเวลา)", icon="⚠️")
         except Exception as e:
-            logging.error(f"Error reading file '{file.name}': {e}", exc_info=True)
-            st.toast(f"❌ อ่านไฟล์ '{file.name}' ไม่ได้", icon="❌")
+            logging.error(f"Error reading file '{safe_filename}': {e}", exc_info=True)
+            st.toast(f"❌ อ่านไฟล์ '{safe_filename}' ไม่ได้", icon="❌")
 
     if not all_dfs:
         st.error("⚠️ ไม่มีข้อมูลที่สามารถนำมาวิเคราะห์ได้เลย โปรดตรวจสอบไฟล์ที่อัปโหลด")
