@@ -250,5 +250,85 @@ class TestDataHandler(unittest.TestCase):
                         found_uploader_with_type = True
         self.assertTrue(found_uploader_with_type, "st.file_uploader must specify allowed 'type' parameter")
 
+    def test_is_header_row_patterns(self):
+        from data_handler import is_header_row
+        # Must recognize standard English date and time combinations
+        self.assertTrue(is_header_row("Date, Time, kW_Import, Voltage"))
+        self.assertTrue(is_header_row("Date, Time, kW, Voltage"))
+        self.assertTrue(is_header_row("Datetime, kW_Import, Voltage"))
+        self.assertTrue(is_header_row("Datetime, Import kW, Voltage"))
+        self.assertTrue(is_header_row("Time, kW, Voltage"))
+        self.assertTrue(is_header_row("PEA NO 1234 Datetime kW"))
+
+        # Must recognize standard Thai combinations
+        self.assertTrue(is_header_row("วันที่, เวลา, กำลังไฟฟ้า (kW), แรงดัน"))
+        self.assertTrue(is_header_row("เวลา, พลังงาน, แรงดัน"))
+        self.assertTrue(is_header_row("เวลา, kW, Voltage"))
+
+        # Must reject metadata and empty / invalid rows
+        self.assertFalse(is_header_row("Company XYZ - Electricity Billing Report"))
+        self.assertFalse(is_header_row("Location: Bangkok Substation 1"))
+        self.assertFalse(is_header_row("Total Energy: 500 kWh"))
+        self.assertFalse(is_header_row(""))
+        self.assertFalse(is_header_row(None))
+        self.assertFalse(is_header_row(12345))
+
+    def test_parse_text_lines_space_delimiter(self):
+        lines = [
+            "Date Clock kW_Import Voltage",
+            "01/01/2023 00:15 100.5 220",
+            "01/01/2023 00:30 110.2 221"
+        ]
+        df = parse_text_lines(lines, delimiter='space')
+        self.assertIsNotNone(df)
+        self.assertFalse(df.empty)
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df.iloc[0]['Clock'], "01/01/2023 00:15")
+        self.assertEqual(df.iloc[0]['kW_Import'], "100.5")
+        self.assertEqual(df.iloc[0]['Voltage'], "220")
+
+    def test_parse_text_lines_date_and_time_columns_missing_voltage(self):
+        # File with separate Date and Time columns and omitted Voltage
+        lines = [
+            "Date, Time, kW_Import",
+            "01/01/2026, 00:15, 100.5",
+            "01/01/2026, 00:30, 110.2"
+        ]
+        df = parse_text_lines(lines, delimiter=',')
+        self.assertIsNotNone(df)
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df.iloc[0]['Clock'], "01/01/2026 00:15")
+        self.assertEqual(df.iloc[0]['kW_Import'], "100.5")
+        self.assertEqual(df.iloc[0]['Voltage'], "220")
+
+    def test_parse_excel_df_date_and_time_columns(self):
+        # Excel DataFrame with separate Date and Time columns
+        df_raw = pd.DataFrame([
+            ["Metadata Title", None, None],
+            ["Date", "Time", "kW_Import"],
+            ["01/01/2026", "00:15", 100.5],
+        ])
+        df = parse_excel_df(df_raw)
+        self.assertIsNotNone(df)
+        self.assertEqual(len(df), 1)
+        self.assertEqual(df.iloc[0]['Clock'], "01/01/2026 00:15")
+        self.assertEqual(df.iloc[0]['kW_Import'], 100.5)
+        self.assertEqual(df.iloc[0]['Voltage'], 220.0)
+
+    def test_preprocess_data_leap_year_february(self):
+        # Leap year Feb 29 (2024 is leap year, 2026 is not)
+        df_in = pd.DataFrame({
+            'Clock': ["29/02/2024 12:00", "29/02/2026 12:00"],
+            'kW_Import': ["150.0", "150.0"],
+            'Voltage': ["220.0", "220.0"]
+        })
+        df_out = preprocess_data(df_in)
+        # 29/02/2024 should be valid and retained; 29/02/2026 should be NaT and dropped
+        self.assertEqual(len(df_out), 1)
+        self.assertEqual(df_out.iloc[0]['Clock'], pd.Timestamp('2024-02-29 12:00:00'))
+        self.assertEqual(df_out.iloc[0]['Month'], "2024-02")
+        self.assertEqual(df_out.iloc[0]['Time_Str'], "12:00")
+        self.assertEqual(df_out.iloc[0]['kWh_15min'], 150.0 / 4.0)
+
 if __name__ == '__main__':
     unittest.main()

@@ -19,11 +19,11 @@ def is_header_row(row_str):
     l_lower = row_str.lower()
     return (('clock' in l_lower and 'import' in l_lower) or
            ('ch1' in l_lower and 'ch4' in l_lower) or
-           ('date' in l_lower and 'clock' in l_lower) or
+           ('date' in l_lower and ('clock' in l_lower or 'time' in l_lower)) or
            ('pea no' in l_lower and 'clock' in l_lower) or
-           ('pea no' in l_lower and 'datatime' in l_lower) or
-           ('datatime' in l_lower and 'import' in l_lower and 'kw' in l_lower) or
-           ('time' in l_lower and 'active' in l_lower and 'power' in l_lower) or
+           ('pea no' in l_lower and ('clock' in l_lower or 'datatime' in l_lower or 'datetime' in l_lower)) or
+           (('datatime' in l_lower or 'datetime' in l_lower) and ('import' in l_lower or 'kw' in l_lower)) or
+           ('time' in l_lower and (('active' in l_lower and 'power' in l_lower) or 'kw' in l_lower or 'import' in l_lower)) or
            ('เวลา' in l_lower and 'พลังงาน' in l_lower) or
            ('วันที่' in l_lower and 'เวลา' in l_lower) or
            ('เวลา' in l_lower and 'kw' in l_lower))
@@ -141,7 +141,9 @@ def parse_text_lines(lines, delimiter=','):
                     if not line.endswith('\n'):
                         line += '\n'
                     parts.append(line)
-                return self.leftover + ''.join(parts)
+                res = self.leftover + ''.join(parts)
+                self.leftover = ''
+                return res
             
             res = [self.leftover]
             current_len = len(self.leftover)
@@ -157,6 +159,26 @@ def parse_text_lines(lines, delimiter=','):
             full_str = ''.join(res)
             self.leftover = full_str[size:]
             return full_str[:size]
+
+        def readline(self, size=-1):
+            if self.leftover:
+                if '\n' in self.leftover:
+                    idx = self.leftover.find('\n')
+                    line = self.leftover[:idx + 1]
+                    self.leftover = self.leftover[idx + 1:]
+                    return line
+                prefix = self.leftover
+                self.leftover = ''
+            else:
+                prefix = ''
+
+            try:
+                line = str(next(self.it))
+                if not line.endswith('\n'):
+                    line += '\n'
+                return prefix + line
+            except StopIteration:
+                return prefix
 
     stream = IteratorStream(line_generator())
     sep = r'\s+' if delimiter == 'space' else delimiter
