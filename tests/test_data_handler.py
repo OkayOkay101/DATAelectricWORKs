@@ -201,5 +201,54 @@ class TestDataHandler(unittest.TestCase):
         df_optimized = preprocess_data(df_input)
         pd.testing.assert_frame_equal(df_optimized, df_baseline)
 
+    def test_load_file_unsupported_extension_rejected(self):
+        import io
+        from data_handler import load_file
+        buffer = io.BytesIO(b"Clock,kW_Import,Voltage\n01/01/2026 00:00,100,220\n")
+        with self.assertRaises(ValueError) as ctx:
+            load_file(buffer, "exe")
+        self.assertIn("ไม่อนุญาต", str(ctx.exception))
+
+    def test_load_file_empty_or_invalid_extension_rejected(self):
+        import io
+        from data_handler import load_file
+        buffer = io.BytesIO(b"Clock,kW_Import,Voltage\n01/01/2026 00:00,100,220\n")
+        with self.assertRaises(ValueError):
+            load_file(buffer, "")
+        with self.assertRaises(ValueError):
+            load_file(buffer, None)
+
+    def test_load_file_oversized_file_rejected(self):
+        import io
+        from data_handler import load_file
+        class OversizedFile(io.BytesIO):
+            def __init__(self):
+                super().__init__(b"Clock,kW_Import,Voltage\n01/01/2026 00:00,100,220\n")
+                self.size = 51 * 1024 * 1024
+        with self.assertRaises(ValueError) as ctx:
+            load_file(OversizedFile(), "csv")
+        self.assertIn("ขนาดไฟล์เกินกำหนด", str(ctx.exception))
+
+    def test_load_file_valid_csv_accepted(self):
+        import io
+        from data_handler import load_file
+        buffer = io.BytesIO(b"Clock,kW_Import,Voltage\n01/01/2026 00:00,100,220\n")
+        df = load_file(buffer, "csv")
+        self.assertIsNotNone(df)
+        self.assertEqual(len(df), 1)
+
+    def test_app_file_uploader_specifies_type(self):
+        import ast
+        app_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'app.py'))
+        with open(app_path, 'r', encoding='utf-8') as f:
+            tree = ast.parse(f.read())
+        found_uploader_with_type = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and getattr(node.func, 'attr', '') == 'file_uploader':
+                for kw in node.keywords:
+                    if kw.arg == 'type':
+                        found_uploader_with_type = True
+        self.assertTrue(found_uploader_with_type, "st.file_uploader must specify allowed 'type' parameter")
+
 if __name__ == '__main__':
     unittest.main()

@@ -33,7 +33,7 @@ st.markdown("""
 # ==========================================
 with st.sidebar:
     st.header("📂 1. อัปโหลดข้อมูล")
-    uploaded_files = st.file_uploader("ลากไฟล์ Excel, CSV, TXT ลงที่นี่", accept_multiple_files=True, help="รองรับไฟล์ Load Profile จากการไฟฟ้า และไฟล์จาก Data Logger")
+    uploaded_files = st.file_uploader("ลากไฟล์ Excel, CSV, TXT ลงที่นี่", type=["csv", "xlsx", "xls", "txt"], accept_multiple_files=True, help="รองรับไฟล์ Load Profile จากการไฟฟ้า และไฟล์จาก Data Logger")
     
     st.divider()
     
@@ -90,7 +90,7 @@ if not uploaded_files:
 with st.spinner('🔄 กำลังโหลด ประมวลผล และเชื่อมต่อข้อมูล...'):
     all_dfs = []
     for file in uploaded_files:
-        file_ext = file.name.split('.')[-1].lower()
+        file_ext = file.name.rsplit('.', 1)[-1].lower() if '.' in file.name else ''
         try:
             df_raw = load_file(file, file_ext)
             df_base = preprocess_data(df_raw)
