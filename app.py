@@ -6,12 +6,12 @@ import streamlit as st
 import datetime
 
 # --- นำเข้า (Import) โมดูลที่เราแยกไว้ ---
-from data_handler import load_file, preprocess_data, get_usage_snapshots
+from data_handler import load_file, preprocess_data, get_usage_snapshots, sanitize_dataframe_for_csv
 from tou_analyzer import apply_tou_and_anomaly
 
 @st.cache_data
 def convert_df_to_csv(df):
-    return df.to_csv(index=False).encode('utf-8-sig')
+    return sanitize_dataframe_for_csv(df).to_csv(index=False).encode('utf-8-sig')
 
 # ==========================================
 # 🎨 Page Configuration & Custom CSS
@@ -496,6 +496,22 @@ def test_no_hardcoded_default_holidays():
                     if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
                         if "2026-" in node.value.value:
                             raise AssertionError("Regression: default_holidays is hardcoded.")
+
+def test_convert_df_to_csv_uses_sanitization():
+    import ast
+    with open('app.py', 'r', encoding='utf-8') as f:
+        tree = ast.parse(f.read())
+
+    found_sanitization = False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == 'convert_df_to_csv':
+            for child in ast.walk(node):
+                if isinstance(child, ast.Call) and getattr(child.func, 'id', '') == 'sanitize_dataframe_for_csv':
+                    found_sanitization = True
+                    break
+
+    if not found_sanitization:
+        raise AssertionError("Regression: convert_df_to_csv must sanitize DataFrame against formula injection")
 
 def test_no_exception_leakage_in_toast():
     import ast

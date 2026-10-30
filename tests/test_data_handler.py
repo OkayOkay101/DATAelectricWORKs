@@ -369,5 +369,49 @@ class TestDataHandler(unittest.TestCase):
         actual_ragged_df = load_file(buf_ragged_test, 'csv')
         pd.testing.assert_frame_equal(actual_ragged_df, expected_ragged_df)
 
+    def test_sanitize_csv_cell_formula_injection_prefixes(self):
+        from data_handler import sanitize_csv_cell
+        self.assertEqual(sanitize_csv_cell("=1+1"), "'=1+1")
+        self.assertEqual(sanitize_csv_cell("=cmd|'/C calc'!A0"), "'=cmd|'/C calc'!A0")
+        self.assertEqual(sanitize_csv_cell("@SUM(A1:A10)"), "'@SUM(A1:A10)")
+        self.assertEqual(sanitize_csv_cell("+cmd"), "'+cmd")
+        self.assertEqual(sanitize_csv_cell("-calc"), "'-calc")
+        self.assertEqual(sanitize_csv_cell("  =formula_with_leading_space"), "'  =formula_with_leading_space")
+        self.assertEqual(sanitize_csv_cell("\t=tab_formula"), "'\t=tab_formula")
+        self.assertEqual(sanitize_csv_cell("\r=cr_formula"), "'\r=cr_formula")
+
+    def test_sanitize_csv_cell_preserves_safe_values(self):
+        from data_handler import sanitize_csv_cell
+        self.assertEqual(sanitize_csv_cell("-100.5"), "-100.5")
+        self.assertEqual(sanitize_csv_cell("+25.0"), "+25.0")
+        self.assertEqual(sanitize_csv_cell("0"), "0")
+        self.assertEqual(sanitize_csv_cell("Off-Peak"), "Off-Peak")
+        self.assertEqual(sanitize_csv_cell("On-Peak"), "On-Peak")
+        self.assertEqual(sanitize_csv_cell(""), "")
+        self.assertEqual(sanitize_csv_cell(100.5), 100.5)
+        self.assertIsNone(sanitize_csv_cell(None))
+
+    def test_sanitize_dataframe_for_csv_neutralizes_headers_and_cells(self):
+        from data_handler import sanitize_dataframe_for_csv
+        df = pd.DataFrame({
+            "=HeaderFormula": ["=2+5", "@evil", "Normal"],
+            "+NonNumHeader": ["+calc", "-exec", "Normal"],
+            "NumericLoad": [-100.5, 200.0, 0.0]
+        })
+        sanitized = sanitize_dataframe_for_csv(df)
+
+        self.assertIn("'=HeaderFormula", sanitized.columns)
+        self.assertIn("'+NonNumHeader", sanitized.columns)
+        self.assertIn("NumericLoad", sanitized.columns)
+
+        self.assertEqual(sanitized["'=HeaderFormula"].iloc[0], "'=2+5")
+        self.assertEqual(sanitized["'=HeaderFormula"].iloc[1], "'@evil")
+        self.assertEqual(sanitized["'=HeaderFormula"].iloc[2], "Normal")
+        self.assertEqual(sanitized["'+NonNumHeader"].iloc[0], "'+calc")
+        self.assertEqual(sanitized["'+NonNumHeader"].iloc[1], "'-exec")
+
+        self.assertEqual(sanitized["NumericLoad"].iloc[0], -100.5)
+        self.assertEqual(sanitized["NumericLoad"].iloc[1], 200.0)
+
 if __name__ == '__main__':
     unittest.main()
