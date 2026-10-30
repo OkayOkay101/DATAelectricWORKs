@@ -331,6 +331,9 @@ def parse_text_lines(lines, delimiter=','):
 
 def parse_excel_df(df_raw):
     """สำหรับอ่านไฟล์ตาราง (Excel) หรือรับต่อจาก pd.read_csv()"""
+    if df_raw is None or len(df_raw) == 0:
+        return None
+
     header_row_idx = -1
     for i in range(min(50, len(df_raw))):
         row_str = ' '.join(df_raw.iloc[i].fillna('').astype(str))
@@ -399,22 +402,30 @@ def parse_excel_df(df_raw):
     if not clock_col or not kw_col:
         return None
         
-    invalid_vals = ['total', 'p', 'op', 'h', 'kwh', 'nan', '']
-    
+    invalid_pattern = r'^(?:total.*|p|op|h|kwh|nan)$'
+    invalid_clock_pattern = r'^(?:total.*|p|op|h|kwh|nan|dnv/err)$'
+
+    c_clean = df[clock_col].fillna('').astype(str).str.strip().str.lower()
+    has_invalid_c = c_clean.str.contains(invalid_clock_pattern, regex=True, na=False)
+    mask_c = ~(has_invalid_c | (c_clean == ''))
+
     if date_col:
-        mask = df[date_col].astype(str).str.strip().str.lower().isin(invalid_vals)
-        df = df[~mask]
+        d_clean = df[date_col].fillna('').astype(str).str.strip().str.lower()
+        has_invalid_d = d_clean.str.contains(invalid_pattern, regex=True, na=False)
+        mask_d = ~(has_invalid_d | (d_clean == ''))
+        valid_mask = mask_c & mask_d
+        df = df[valid_mask].copy()
         df['Merged_Clock'] = df[date_col].astype(str).str.strip() + ' ' + df[clock_col].astype(str).str.strip()
         clock_col = 'Merged_Clock'
     else:
-        mask = df[clock_col].astype(str).str.strip().str.lower().isin(invalid_vals)
-        df = df[~mask]
+        valid_mask = mask_c
+        df = df[valid_mask].copy()
         
     out_df = pd.DataFrame()
-    out_df['Clock'] = df[clock_col]
-    out_df['kW_Import'] = df[kw_col]
-    out_df['Voltage'] = df[v_col] if v_col else 220.0
-    return out_df
+    out_df['Clock'] = df[clock_col].reset_index(drop=True)
+    out_df['kW_Import'] = df[kw_col].reset_index(drop=True)
+    out_df['Voltage'] = df[v_col].reset_index(drop=True) if v_col else 220.0
+    return out_df.reset_index(drop=True)
 
 @st.cache_data
 def load_file(uploaded_file, file_ext):

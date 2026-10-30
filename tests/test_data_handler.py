@@ -315,6 +315,66 @@ class TestDataHandler(unittest.TestCase):
         self.assertEqual(df.iloc[0]['kW_Import'], 100.5)
         self.assertEqual(df.iloc[0]['Voltage'], 220.0)
 
+    def test_parse_excel_df_filters_footer_in_time_column_and_empty_time(self):
+        # Excel files with separate Date and Time columns must filter footers in Time (e.g. Total, P, OP, H, empty)
+        df_raw = pd.DataFrame([
+            ["Date", "Time", "kW_Import", "Voltage"],
+            ["01/01/2026", "00:00", "10.0", "220"],
+            ["01/01/2026", "00:15", "20.0", "220"],
+            ["01/01/2026", "Total", "500.0", "220"],
+            ["01/01/2026", "P", "250.0", "220"],
+            ["01/01/2026", "OP", "250.0", "220"],
+            ["01/01/2026", "H", "0.0", "220"],
+            ["01/01/2026", "kWh", "125.0", "220"],
+            ["01/01/2026", "dnv/err", "0.0", "220"],
+            ["01/01/2026", "", "5000.0", "220"],
+            ["01/01/2026", None, "5000.0", "220"],
+            ["Total", "", "5000.0", "220"],
+        ])
+        df = parse_excel_df(df_raw)
+        self.assertIsNotNone(df)
+        self.assertEqual(len(df), 2, "Only 2 actual time readings should be retained")
+        self.assertEqual(df.iloc[0]['Clock'], "01/01/2026 00:00")
+        self.assertEqual(df.iloc[1]['Clock'], "01/01/2026 00:15")
+        self.assertEqual(df.iloc[0]['kW_Import'], "10.0")
+        self.assertEqual(df.iloc[1]['kW_Import'], "20.0")
+
+    def test_parse_excel_df_filters_clock_summary_footers(self):
+        # Single Clock column must filter footers matching total.* and dnv/err
+        df_raw = pd.DataFrame([
+            ["Clock", "kW_Import", "Voltage"],
+            ["01/01/2026 00:15", "100.0", "220"],
+            ["Total Energy", "1000.0", "220"],
+            ["Total Demand (kW)", "500.0", "220"],
+            ["dnv/err", "0.0", "220"],
+            ["kWh", "1000.0", "220"],
+        ])
+        df = parse_excel_df(df_raw)
+        self.assertIsNotNone(df)
+        self.assertEqual(len(df), 1, "Only 1 valid row should be retained, skipping summary footers")
+        self.assertEqual(df.iloc[0]['Clock'], "01/01/2026 00:15")
+        self.assertEqual(df.iloc[0]['kW_Import'], "100.0")
+
+    def test_parse_excel_df_preserves_12hr_pm_and_month_names(self):
+        # Formats with 12hr PM and month names (Sep, March) must not be falsely dropped by footer filters
+        df_raw = pd.DataFrame([
+            ["Date", "Time", "kW_Import"],
+            ["01/01/2026", "01:00 PM", "100.0"],
+            ["15-Sep-2026", "09:00", "120.0"],
+            ["10-March-2026", "09:00", "110.0"],
+            ["Total", "", "330.0"],
+        ])
+        df = parse_excel_df(df_raw)
+        self.assertIsNotNone(df)
+        self.assertEqual(len(df), 3, "Expected 3 valid records, skipping only the Total footer")
+        self.assertEqual(df.iloc[0]['Clock'], "01/01/2026 01:00 PM")
+        self.assertEqual(df.iloc[1]['Clock'], "15-Sep-2026 09:00")
+        self.assertEqual(df.iloc[2]['Clock'], "10-March-2026 09:00")
+
+    def test_parse_excel_df_none_or_empty_returns_none(self):
+        self.assertIsNone(parse_excel_df(None))
+        self.assertIsNone(parse_excel_df(pd.DataFrame()))
+
     def test_preprocess_data_leap_year_february(self):
         # Leap year Feb 29 (2024 is leap year, 2026 is not)
         df_in = pd.DataFrame({
