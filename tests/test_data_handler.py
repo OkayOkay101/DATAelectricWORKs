@@ -875,6 +875,83 @@ class TestDataHandler(unittest.TestCase):
         })
         pd.testing.assert_frame_equal(actual, expected)
 
+    def test_parse_excel_df_rejects_identical_clock_and_kw_columns(self):
+        # A 1-column DataFrame where Clock and kW match the same unseparated text header must return None
+        df_raw = pd.DataFrame([
+            ["Date Clock kW_Import Voltage"],
+            ["01/01/2026 00:15 100.5 220"]
+        ])
+        self.assertIsNone(parse_excel_df(df_raw), "parse_excel_df must return None when Clock and kW columns are identical")
+
+    def test_parse_text_lines_rejects_identical_clock_and_kw_indices(self):
+        # Text line where Clock and kW match the same single column must return None
+        lines = [
+            "Clock_kW_Import",
+            "01/01/2026 00:15 100.5"
+        ]
+        self.assertIsNone(parse_text_lines(lines), "parse_text_lines must return None when Clock and kW resolve to same index")
+
+    def test_load_file_tab_separated_txt_parsed_successfully(self):
+        import io
+        from data_handler import load_file
+        content = b"Date\tClock\tkW_Import\tVoltage\n01/01/2026\t00:15\t100.5\t220.0\n01/01/2026\t00:30\t110.2\t221.0\n"
+        buffer = io.BytesIO(content)
+        df = load_file(buffer, "txt")
+        self.assertIsNotNone(df)
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df.iloc[0]['Clock'], "01/01/2026 00:15")
+        self.assertEqual(df.iloc[0]['kW_Import'], "100.5")
+        self.assertEqual(df.iloc[0]['Voltage'], "220.0")
+
+        # Verify it successfully preprocesses into valid datetime load profile
+        df_preprocessed = preprocess_data(df)
+        self.assertEqual(len(df_preprocessed), 2)
+        self.assertEqual(df_preprocessed.iloc[0]['Clock'], pd.Timestamp('2026-01-01 00:15:00'))
+        self.assertEqual(df_preprocessed.iloc[0]['kW_Import'], 100.5)
+
+    def test_load_file_space_separated_txt_parsed_successfully(self):
+        import io
+        from data_handler import load_file
+        content = b"Date Clock kW_Import Voltage\n01/01/2026 00:15 100.5 220.0\n01/01/2026 00:30 110.2 221.0\n"
+        buffer = io.BytesIO(content)
+        df = load_file(buffer, "txt")
+        self.assertIsNotNone(df)
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df.iloc[0]['Clock'], "01/01/2026 00:15")
+        self.assertEqual(df.iloc[0]['kW_Import'], "100.5")
+
+        df_preprocessed = preprocess_data(df)
+        self.assertEqual(len(df_preprocessed), 2)
+        self.assertEqual(df_preprocessed.iloc[0]['Clock'], pd.Timestamp('2026-01-01 00:15:00'))
+
+    def test_load_file_semicolon_separated_csv_parsed_successfully(self):
+        import io
+        from data_handler import load_file
+        content = b"Date;Clock;kW_Import;Voltage\n01/01/2026;00:15;100.5;220.0\n01/01/2026;00:30;110.2;221.0\n"
+        buffer = io.BytesIO(content)
+        df = load_file(buffer, "csv")
+        self.assertIsNotNone(df)
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df.iloc[0]['Clock'], "01/01/2026 00:15")
+        self.assertEqual(df.iloc[0]['kW_Import'], "100.5")
+
+        df_preprocessed = preprocess_data(df)
+        self.assertEqual(len(df_preprocessed), 2)
+        self.assertEqual(df_preprocessed.iloc[0]['Clock'], pd.Timestamp('2026-01-01 00:15:00'))
+
+    def test_load_file_tab_separated_csv_parsed_successfully(self):
+        import io
+        from data_handler import load_file
+        content = b"Date\tClock\tkW_Import\tVoltage\n01/01/2026\t00:15\t100.5\t220.0\n01/01/2026\t00:30\t110.2\t221.0\n"
+        buffer = io.BytesIO(content)
+        df = load_file(buffer, "csv")
+        self.assertIsNotNone(df)
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df.iloc[0]['Clock'], "01/01/2026 00:15")
+
+        df_preprocessed = preprocess_data(df)
+        self.assertEqual(len(df_preprocessed), 2)
+        self.assertEqual(df_preprocessed.iloc[0]['Clock'], pd.Timestamp('2026-01-01 00:15:00'))
 
 
 if __name__ == '__main__':
