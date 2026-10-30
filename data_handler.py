@@ -8,6 +8,10 @@ import logging
 DEFAULT_OUTLIER_KW_MAX = 2000000
 DEFAULT_OUTLIER_V_MAX = 2000000
 
+# ค่าคงที่สำหรับความปลอดภัยและการตรวจสอบไฟล์นำเข้า
+ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls', 'txt'}
+MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
+
 
 def is_header_row(row_str):
     if not isinstance(row_str, str):
@@ -299,52 +303,31 @@ def parse_excel_df(df_raw):
 
 @st.cache_data
 def load_file(uploaded_file, file_ext):
+    if not file_ext or not isinstance(file_ext, str):
+        raise ValueError("ไม่พบนามสกุลไฟล์ที่ถูกต้อง")
+
+    clean_ext = file_ext.lower().lstrip('.')
+    if clean_ext not in ALLOWED_EXTENSIONS:
+        raise ValueError(
+            f"ไม่อนุญาตให้อัปโหลดไฟล์นามสกุล .{clean_ext} (รองรับเฉพาะ: {', '.join(sorted(ALLOWED_EXTENSIONS))})"
+        )
+
+    # ตรวจสอบขนาดไฟล์เพื่อป้องกัน Denial of Service (DoS / Resource Exhaustion)
+    file_size = getattr(uploaded_file, 'size', None)
+    if file_size is None and hasattr(uploaded_file, 'getbuffer'):
+        try:
+            file_size = uploaded_file.getbuffer().nbytes
+        except Exception:
+            file_size = None
+    if file_size is not None and file_size > MAX_FILE_SIZE_BYTES:
+        raise ValueError(f"ขนาดไฟล์เกินกำหนด (สูงสุด {MAX_FILE_SIZE_BYTES // (1024 * 1024)} MB)")
+
     df_result = None
-    
-    # 1. ลองใช้ Pandas โดยตั้งค่า names=range(50) 
-    if df_result is None:
+
+    # 1. หากเป็นไฟล์ Excel (.xlsx, .xls) หรือ HTML ให้ลองอ่านด้วย Excel engine ก่อน
+    if clean_ext in ['xlsx', 'xls']:
         try:
-            try:
-                uploaded_file.seek(0)
-                df_raw = pd.read_csv(uploaded_file, encoding='utf-8-sig', names=range(50), dtype=str, low_memory=False)
-            except Exception as e:
-                logging.warning(f"Failed to read CSV with utf-8-sig: {e}")
-                uploaded_file.seek(0)
-                df_raw = pd.read_csv(uploaded_file, encoding='cp874', names=range(50), dtype=str, low_memory=False)
-            df_result = parse_excel_df(df_raw)
-        except Exception as e:
-            logging.warning(f"Failed to parse CSV with pandas: {e}")
-            
-    # 2. ลองอ่านแบบ Text บรรทัดต่อบรรทัด 
-    if df_result is None:
-        encodings_to_try = ['utf-8-sig', 'cp874', 'utf-16', 'utf-16le', 'tis-620']
-        for enc in encodings_to_try:
-            try:
-                uploaded_file.seek(0)
-                text_stream = io.TextIOWrapper(uploaded_file, encoding=enc)
-                head = text_stream.read(100)
-                if len(head) > 0 and '\x00' not in head:
-                    uploaded_file.seek(0)
-                    text_stream.detach()
-                    text_stream = io.TextIOWrapper(uploaded_file, encoding=enc)
-                    df_result = parse_text_lines(text_stream, delimiter=',')
-                    text_stream.detach()
-                    if df_result is not None and not df_result.empty:
-                        break
-                else:
-                    text_stream.detach()
-            except Exception as e:
-                logging.warning(f"Failed to read text lines with encoding {enc}: {e}")
-                if 'text_stream' in locals() and not text_stream.closed:
-                    try:
-                        text_stream.detach()
-                    except Exception:
-                        pass
-            
-    # 3. หากเป็นไฟล์ .xls (Binary) หรือ HTML 
-    if df_result is None and file_ext in ['xlsx', 'xls']:
-        try:
-            engine = 'openpyxl' if file_ext == 'xlsx' else 'xlrd'
+            engine = 'openpyxl' if clean_ext == 'xlsx' else 'xlrd'
             uploaded_file.seek(0)
             df_raw = pd.read_excel(uploaded_file, engine=engine, header=None)
             df_result = parse_excel_df(df_raw)
@@ -357,10 +340,51 @@ def load_file(uploaded_file, file_ext):
                     df_result = parse_excel_df(dfs[0])
             except Exception as e:
                 logging.warning(f"Failed to read html: {e}")
-                
+
+    # 2. หากเป็นไฟล์ CSV หรือ TXT
+    if df_result is None and clean_ext in ['csv', 'txt']:
+        # 2.1 ลองใช้ Pandas โดยตั้งค่า names=range(50)
+        try:
+            try:
+                uploaded_file.seek(0)
+                df_raw = pd.read_csv(uploaded_file, encoding='utf-8-sig', names=range(50), dtype=str, low_memory=False)
+            except Exception as e:
+                logging.warning(f"Failed to read CSV with utf-8-sig: {e}")
+                uploaded_file.seek(0)
+                df_raw = pd.read_csv(uploaded_file, encoding='cp874', names=range(50), dtype=str, low_memory=False)
+            df_result = parse_excel_df(df_raw)
+        except Exception as e:
+            logging.warning(f"Failed to parse CSV with pandas: {e}")
+
+        # 2.2 ลองอ่านแบบ Text บรรทัดต่อบรรทัด
+        if df_result is None:
+            encodings_to_try = ['utf-8-sig', 'cp874', 'utf-16', 'utf-16le', 'tis-620']
+            for enc in encodings_to_try:
+                try:
+                    uploaded_file.seek(0)
+                    text_stream = io.TextIOWrapper(uploaded_file, encoding=enc)
+                    head = text_stream.read(100)
+                    if len(head) > 0 and '\x00' not in head:
+                        uploaded_file.seek(0)
+                        text_stream.detach()
+                        text_stream = io.TextIOWrapper(uploaded_file, encoding=enc)
+                        df_result = parse_text_lines(text_stream, delimiter=',')
+                        text_stream.detach()
+                        if df_result is not None and not df_result.empty:
+                            break
+                    else:
+                        text_stream.detach()
+                except Exception as e:
+                    logging.warning(f"Failed to read text lines with encoding {enc}: {e}")
+                    if 'text_stream' in locals() and not text_stream.closed:
+                        try:
+                            text_stream.detach()
+                        except Exception:
+                            pass
+
     if df_result is None or df_result.empty:
         raise ValueError("อ่านไฟล์ไม่สำเร็จ โครงสร้างไฟล์ผิดปกติหรือไม่พบข้อมูลเวลา")
-        
+
     return df_result
 
 COMMON_DATETIME_FORMATS = (
