@@ -6,12 +6,35 @@ from typing import Any, List, Tuple, Union
 def _apply_tou_and_anomaly_cached(df, sensitivity, p_start, p_end, p_rate, op_rate, holiday_tuple):
     """วิเคราะห์สถานะ TOU (Peak, Off-Peak, Holiday) และตรวจสอบไฟตกไฟเกินตามเงื่อนไขใหม่ (เวอร์ชัน Cache)"""
     df = df.copy()
+
+    if df.empty:
+        standard_cols = [
+            ('Clock', 'datetime64[ns]'),
+            ('kW_Import', 'float64'),
+            ('kWh_15min', 'float64'),
+            ('Is_Weekend', 'bool'),
+            ('Is_Holiday', 'bool'),
+            ('Period_Detail', 'object'),
+            ('Rate_THB', 'float64'),
+            ('Cost_THB', 'float64'),
+            ('Anomaly_Type', 'object'),
+        ]
+        for col, dtype in standard_cols:
+            if col not in df.columns:
+                df[col] = pd.Series(dtype=dtype)
+            elif df[col].dtype == object and dtype != 'object':
+                df[col] = df[col].astype(dtype)
+        return df
     
     df['Is_Weekend'] = df['Clock'].dt.weekday >= 5
     
     # ⚡ Bolt Optimization: Use vectorized normalize() instead of slow strftime()
-    holiday_dt = pd.to_datetime(holiday_tuple, errors='coerce')
-    df['Is_Holiday'] = df['Clock'].dt.normalize().isin(holiday_dt)
+    if holiday_tuple:
+        holiday_dt = pd.to_datetime(holiday_tuple, errors='coerce')
+        df['Is_Holiday'] = df['Clock'].dt.normalize().isin(holiday_dt)
+    
+    else:
+        df['Is_Holiday'] = False
 
     # ⚡ Bolt Optimization: Use total seconds from midnight instead of slow dt.time object creation
     curr_sec = df['Clock'].dt.hour * 3600 + df['Clock'].dt.minute * 60 + df['Clock'].dt.second
@@ -62,9 +85,14 @@ def apply_tou_and_anomaly(
     p_end: Any,
     p_rate: float,
     op_rate: float,
-    holiday_list: Union[List[str], Tuple[str, ...]]
+    holiday_list: Union[List[str], Tuple[str, ...], None] = None
 ) -> pd.DataFrame:
     """วิเคราะห์สถานะ TOU (Peak, Off-Peak, Holiday) และตรวจสอบไฟตกไฟเกินตามเงื่อนไขใหม่"""
     # แปลง holiday_list เป็น tuple เพื่อให้เป็นอาร์กิวเมนต์ที่สามารถ Hash ได้สำหรับ st.cache_data
-    holiday_tuple = tuple(holiday_list) if isinstance(holiday_list, list) else holiday_list
+    if holiday_list is None:
+        holiday_tuple = ()
+    elif isinstance(holiday_list, tuple):
+        holiday_tuple = holiday_list
+    else:
+        holiday_tuple = tuple(holiday_list)
     return _apply_tou_and_anomaly_cached(df, sensitivity, p_start, p_end, p_rate, op_rate, holiday_tuple)
