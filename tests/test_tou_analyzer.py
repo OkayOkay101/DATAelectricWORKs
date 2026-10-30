@@ -241,5 +241,62 @@ class TouFunctionalTests(unittest.TestCase):
         self.assertEqual(res['Cost_THB'].iloc[0], 25.0)
 
 
+    def test_invalid_and_nat_clock_defaults_to_offpeak(self):
+        """Rows with NaT or unparseable timestamps must evaluate as Off-Peak rather than On-Peak."""
+        df = pd.DataFrame({
+            'Clock': [pd.NaT, 'invalid_timestamp'],
+            'kW_Import': [10.0, 10.0]
+        })
+        # Peak window 00:00 to 08:00 covers the 763s (00:12:43) epoch modulo of NaT
+        res = apply_tou_and_anomaly(df, 2.0, time(0, 0), time(8, 0), 5.0, 2.0)
+        self.assertEqual(res['Period_Detail'].tolist(), ['Off-Peak', 'Off-Peak'])
+        self.assertEqual(res['Rate_THB'].tolist(), [2.0, 2.0])
+        self.assertFalse(res['Is_Weekend'].any())
+        self.assertFalse(res['Is_Holiday'].any())
+
+    def test_nat_clock_with_midnight_crossing_peak_defaults_to_offpeak(self):
+        """NaT timestamps with midnight-crossing peak window must stay Off-Peak."""
+        df = pd.DataFrame({
+            'Clock': [pd.NaT],
+            'kW_Import': [10.0]
+        })
+        res = apply_tou_and_anomaly(df, 2.0, time(22, 0), time(6, 0), 5.0, 2.0)
+        self.assertEqual(res['Period_Detail'].tolist(), ['Off-Peak'])
+        self.assertEqual(res['Rate_THB'].tolist(), [2.0])
+
+    def test_missing_kw_import_column_handled_without_keyerror(self):
+        """When kW_Import column is omitted from non-empty DataFrame, it should default safely to 0.0."""
+        df = pd.DataFrame({
+            'Clock': [pd.Timestamp('2026-10-19 10:00:00')]
+        })
+        res = apply_tou_and_anomaly(df, 2.0, time(9, 0), time(22, 0), 5.0, 2.0)
+        self.assertIn('kW_Import', res.columns)
+        self.assertEqual(res['kW_Import'].iloc[0], 0.0)
+        self.assertEqual(res['kWh_15min'].iloc[0], 0.0)
+        self.assertEqual(res['Cost_THB'].iloc[0], 0.0)
+        self.assertEqual(res['Anomaly_Type'].iloc[0], 'ปกติ')
+
+    def test_string_and_non_numeric_kw_import_converted_gracefully(self):
+        """String or object kW_Import and kWh_15min columns must be safely converted to float."""
+        df = pd.DataFrame({
+            'Clock': [pd.Timestamp('2026-10-19 10:00:00')],
+            'kW_Import': ['20.0']
+        })
+        res = apply_tou_and_anomaly(df, 2.0, time(9, 0), time(22, 0), 5.0, 2.0)
+        self.assertEqual(res['kW_Import'].iloc[0], 20.0)
+        self.assertEqual(res['kWh_15min'].iloc[0], 5.0)
+        self.assertEqual(res['Cost_THB'].iloc[0], 25.0)
+
+    def test_missing_clock_column_handled_without_keyerror(self):
+        """When Clock column is omitted from non-empty DataFrame, it should not raise KeyError."""
+        df = pd.DataFrame({
+            'kW_Import': [10.0, 20.0]
+        })
+        res = apply_tou_and_anomaly(df, 2.0, time(9, 0), time(22, 0), 5.0, 2.0)
+        self.assertIn('Clock', res.columns)
+        self.assertEqual(res['Period_Detail'].tolist(), ['Off-Peak', 'Off-Peak'])
+        self.assertEqual(res['Rate_THB'].tolist(), [2.0, 2.0])
+
+
 if __name__ == '__main__':
     unittest.main()
