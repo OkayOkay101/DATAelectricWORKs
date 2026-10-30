@@ -413,5 +413,65 @@ class TestDataHandler(unittest.TestCase):
         self.assertEqual(sanitized["NumericLoad"].iloc[0], -100.5)
         self.assertEqual(sanitized["NumericLoad"].iloc[1], 200.0)
 
+    def test_parse_text_lines_preserves_12hr_pm_records(self):
+        # 12-hour AM/PM timestamps must not be falsely dropped by unanchored 'p' filter
+        lines = [
+            "Date, Time, kW_Import, Voltage",
+            "01/01/2026, 09:00 AM, 100.0, 220",
+            "01/01/2026, 01:00 PM, 150.0, 225",
+            "01/01/2026, 06:30 PM, 200.0, 220",
+            "01/01/2026, 11:45 PM, 80.0, 219",
+            "Total, , 530.0, 220"
+        ]
+        df = parse_text_lines(lines, delimiter=',')
+        self.assertIsNotNone(df)
+        self.assertEqual(len(df), 4, "Expected all 4 AM and PM records to be retained, skipping only 'Total'")
+        self.assertEqual(df.iloc[1]['Clock'], "01/01/2026 01:00 PM")
+        self.assertEqual(df.iloc[2]['Clock'], "01/01/2026 06:30 PM")
+        self.assertEqual(df.iloc[3]['Clock'], "01/01/2026 11:45 PM")
+        self.assertEqual(df.iloc[1]['kW_Import'], "150.0")
+
+    def test_parse_text_lines_preserves_month_names_with_p_or_h(self):
+        # Dates with month names containing 'p' or 'h' (Sep, Apr, March) must not be dropped
+        lines = [
+            "Date, Clock, kW_Import, Voltage",
+            "15-Sep-2026, 09:00, 100.0, 220",
+            "10-Apr-2026, 09:00, 120.0, 220",
+            "05-March-2026, 09:00, 110.0, 220",
+            "total, 0, 330.0, 220"
+        ]
+        df = parse_text_lines(lines, delimiter=',')
+        self.assertIsNotNone(df)
+        self.assertEqual(len(df), 3, "Expected all 3 month records (Sep, Apr, March) to be retained")
+        self.assertEqual(df.iloc[0]['Clock'], "15-Sep-2026 09:00")
+        self.assertEqual(df.iloc[1]['Clock'], "10-Apr-2026 09:00")
+        self.assertEqual(df.iloc[2]['Clock'], "05-March-2026 09:00")
+
+    def test_parse_text_lines_preserves_time_with_h_character(self):
+        # Formats with 'h' in time string (e.g. 14h00, 14h15) must not be dropped by 'h' filter
+        lines = [
+            "Date Clock kW_Import Voltage",
+            "01/01/2026 14h00 100.0 220",
+            "01/01/2026 14h15 105.0 220"
+        ]
+        df = parse_text_lines(lines, delimiter='space')
+        self.assertIsNotNone(df)
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df.iloc[0]['Clock'], "01/01/2026 14h00")
+        self.assertEqual(df.iloc[1]['Clock'], "01/01/2026 14h15")
+
+    def test_parse_text_lines_filters_actual_summary_footers(self):
+        # Footer summary rows should be filtered out accurately
+        for footer in ["Total, , 1000, 220", "P, , 500, 220", "OP, , 500, 220", "H, , 0, 220", "kWh, , 1000, 220", "NaN, , 0, 220", "dnv/err, , 0, 220"]:
+            lines = [
+                "Clock, kW_Import, Voltage",
+                "01/01/2026 00:15, 100.0, 220",
+                footer
+            ]
+            df = parse_text_lines(lines, delimiter=',')
+            self.assertIsNotNone(df)
+            self.assertEqual(len(df), 1, f"Failed to filter footer row: {footer}")
+            self.assertEqual(df.iloc[0]['Clock'], "01/01/2026 00:15")
+
 if __name__ == '__main__':
     unittest.main()
