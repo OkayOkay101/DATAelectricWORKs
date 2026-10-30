@@ -129,6 +129,30 @@ class TestApp(unittest.TestCase):
             self.assertEqual(fig_daily_layout.get('yaxis', {}).get('title', {}).get('text'), "พลังงานไฟฟ้ารวม (kWh)")
             self.assertEqual(fig_daily_layout.get('xaxis', {}).get('title', {}).get('text'), "วันที่ (Date)")
 
+            # Verify Tab 1 (Overview) charts have Thai trace names with units
+            fig_all_spec = json.loads(plotly_charts[0].proto.spec)
+            fig_all_traces = [t.get('name') for t in fig_all_spec.get('data', [])]
+            self.assertTrue(
+                any("กำลังไฟฟ้า (kW" in name for name in fig_all_traces),
+                f"Expected Thai trace name with kW in fig_all, got: {fig_all_traces}"
+            )
+
+            fig_kw_spec = json.loads(plotly_charts[1].proto.spec)
+            fig_kw_traces = [t.get('name') for t in fig_kw_spec.get('data', [])]
+            self.assertIn("กำลังไฟฟ้า (kW)", fig_kw_traces)
+
+            fig_kwh_spec = json.loads(plotly_charts[2].proto.spec)
+            fig_kwh_traces = [t.get('name') for t in fig_kwh_spec.get('data', [])]
+            self.assertIn("พลังงานไฟฟ้า (kWh)", fig_kwh_traces)
+
+            fig_daily_spec = json.loads(plotly_charts[3].proto.spec)
+            fig_daily_traces = [t.get('name') for t in fig_daily_spec.get('data', [])]
+            self.assertIn("พลังงานไฟฟ้ารวมรายวัน (kWh)", fig_daily_traces)
+
+            # Verify Tab 1 (Overview) has anomaly color legend in info banner
+            tab1_anomaly_legends = [inf.value for inf in at.info if "จุดสีแดง = โหลดสูงผิดปกติ" in inf.value]
+            self.assertGreaterEqual(len(tab1_anomaly_legends), 2, "Expected anomaly color explanation in both Tab 1 and Tab 2")
+
             # Verify Tab 2 (Daily Insights) raw data table has Thai headers with units and hidden index
             self.assertGreater(len(at.dataframe), 2, "Expected at least 3 dataframes rendered")
             raw_table = at.dataframe[2]
