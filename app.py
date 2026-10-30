@@ -257,20 +257,52 @@ with tab2:
         with col_d1: sel_date = st.selectbox("📅 เลือกวันที่ต้องการเจาะลึก", available_dates)
         day_df = df_display[df_display['Date'] == pd.Timestamp(sel_date)].copy()
 
-        st.markdown(f"#### 📊 สรุปสัดส่วนการใช้พลังงานประจำวันที่ {sel_date}")
-        
-        m_col1, m_col2, m_col3 = st.columns(3)
-        m_col1.metric("โหลดรวมประจำวัน (Sum kW)", f"{day_df['kW_Import'].sum():,.2f} kW")
-        m_col2.metric("พลังงานรวมประจำวัน (Total kWh)", f"{day_df['kWh_15min'].sum():,.2f} kWh")
-        m_col3.metric("ค่าไฟฟ้าประจำวัน", f"฿ {day_df['Cost_THB'].sum():,.2f}")
-        
-        st.write("")
+        with st.container(border=True):
+            st.markdown(f"#### 📊 สรุปภาพรวมพลังงานประจำวันที่ {sel_date}")
+            m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+            peak_day_kw = day_df['kW_Import'].max() if not day_df.empty else 0.0
+            total_day_kwh = day_df['kWh_15min'].sum() if not day_df.empty else 0.0
+            total_day_cost = day_df['Cost_THB'].sum() if not day_df.empty else 0.0
+            avg_day_kw = day_df['kW_Import'].mean() if not day_df.empty else 0.0
+
+            m_col1.metric(
+                "🔥 โหลดสูงสุดประจำวัน (Peak)",
+                f"{peak_day_kw:,.2f} kW",
+                help="กำลังไฟฟ้าสูงสุดที่เกิดขึ้นในวันที่เลือก (Peak Demand)"
+            )
+            m_col2.metric(
+                "⚡ พลังงานรวมประจำวัน (Total kWh)",
+                f"{total_day_kwh:,.2f} kWh",
+                help="ปริมาณพลังงานไฟฟ้ารวมตลอดทั้งวัน (kWh)"
+            )
+            m_col3.metric(
+                "💰 ค่าไฟฟ้าประจำวัน",
+                f"฿ {total_day_cost:,.2f}",
+                help="ประมาณการค่าไฟฟ้ารวมในวันที่เลือก"
+            )
+            m_col4.metric(
+                "📈 โหลดเฉลี่ยประจำวัน",
+                f"{avg_day_kw:,.2f} kW",
+                help="กำลังไฟฟ้าเฉลี่ยตลอดทั้งวัน"
+            )
+
+        st.markdown("##### 🧾 สรุปสัดส่วนตามช่วงเวลา (Period Breakdown)")
         summary_daily = day_df.groupby('Period_Detail')[['kW_Import', 'kWh_15min', 'Cost_THB']].sum().reset_index()
         summary_daily.columns = ['สถานะ (Period)', 'โหลดรวม (kW)', 'พลังงานรวม (kWh)', 'ค่าไฟฟ้า (บาท)']
-        st.dataframe(summary_daily, width='stretch', hide_index=True)
+        st.dataframe(
+            summary_daily,
+            width='stretch',
+            hide_index=True,
+            column_config={
+                "สถานะ (Period)": st.column_config.TextColumn("สถานะ (Period)"),
+                "โหลดรวม (kW)": st.column_config.NumberColumn("โหลดรวม (kW)", format="%.2f"),
+                "พลังงานรวม (kWh)": st.column_config.NumberColumn("พลังงานรวม (kWh)", format="%.2f"),
+                "ค่าไฟฟ้า (บาท)": st.column_config.NumberColumn("ค่าไฟฟ้า (บาท)", format="฿ %.2f"),
+            }
+        )
 
-        fig_15min = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.05, 
-                                  subplot_titles=("พลังงาน (kW)", "พลังงานทุก 15 นาที (kWh)", "แรงดันไฟฟ้า (V)", "ประมาณการค่าไฟฟ้าราย 15 นาที (THB)"))
+        fig_15min = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.06, 
+                                  subplot_titles=("กำลังไฟฟ้า (kW)", "พลังงานทุก 15 นาที (kWh)", "แรงดันไฟฟ้า (V)", "ประมาณการค่าไฟฟ้าราย 15 นาที (บาท)"))
         
         color_map = {'Holiday': '#ffd166', 'On-Peak': '#e76f51', 'Off-Peak': '#2a9d8f'}
         day_colors = day_df['Period_Detail'].map(color_map).fillna('#2a9d8f')
@@ -284,6 +316,12 @@ with tab2:
         
         fig_15min.add_trace(go.Bar(x=day_df['Clock'], y=day_df['Cost_THB'], marker_color="#8338ec", name="THB"), row=4, col=1)
         
+        fig_15min.update_yaxes(title_text="kW", row=1, col=1)
+        fig_15min.update_yaxes(title_text="kWh", row=2, col=1)
+        fig_15min.update_yaxes(title_text="Volt", row=3, col=1)
+        fig_15min.update_yaxes(title_text="บาท", row=4, col=1)
+        fig_15min.update_xaxes(title_text="วัน-เวลา (Timestamp)", row=4, col=1)
+
         fig_15min.update_layout(height=900, template="plotly_white", hovermode="x unified", showlegend=False, margin=dict(l=20, r=20, t=40, b=20))
         st.plotly_chart(fig_15min, width='stretch')
 
@@ -314,6 +352,17 @@ with tab2:
                 "สถานะความผิดปกติ (Anomaly)": st.column_config.TextColumn("สถานะความผิดปกติ (Anomaly)"),
             }
         )
+
+        daily_csv_data = convert_df_to_csv(day_raw_table)
+        st.download_button(
+            label=f"📥 ดาวน์โหลดข้อมูลดิบรายวันที่ {sel_date} (.csv)",
+            data=daily_csv_data,
+            file_name=f"daily_load_profile_{sel_date}.csv",
+            mime="text/csv",
+            help="ดาวน์โหลดข้อมูล Load Profile ราย 15 นาทีของวันที่เลือกในรูปแบบไฟล์ CSV"
+        )
+    else:
+        st.info("ℹ️ ไม่พบข้อมูลวันที่สำหรับเจาะลึก กรุณาตรวจสอบหรืออัปโหลดไฟล์ข้อมูล")
 
 # ------------------------------------------
 # TAB 3: จำลองเลื่อนเวลา (กราฟเปรียบเทียบ)
