@@ -765,8 +765,15 @@ def preprocess_data(df, kw_max=DEFAULT_OUTLIER_KW_MAX, v_max=DEFAULT_OUTLIER_V_M
     df = df.dropna(subset=['Clock']).reset_index(drop=True)
     
     # ป้องกันไฟล์ทับกัน
-    df = df.sort_values(['Clock', 'kW_Import'], ascending=[True, False])
-    df = df.drop_duplicates(subset=['Clock'], keep='first').reset_index(drop=True)
+    # ⚡ Bolt Optimization: Fast monotonic check before multi-column lexsort and deduplication.
+    # In load profiles, timestamps are almost universally recorded in chronological order.
+    # Evaluating strictly increasing order via int64 epoch differences (`np.all(np.diff(ns) > 0)`)
+    # allows bypassing expensive multi-column lexsort and deduplication when rows are already ordered.
+    clock_series = df['Clock']
+    ns = clock_series.to_numpy(dtype='int64')
+    if not (len(ns) <= 1 or np.all(np.diff(ns) > 0)):
+        df = df.sort_values(['Clock', 'kW_Import'], ascending=[True, False])
+        df = df.drop_duplicates(subset=['Clock'], keep='first').reset_index(drop=True)
     
     if df.empty:
         return _empty_preprocessed_df(df)

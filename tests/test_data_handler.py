@@ -1085,5 +1085,98 @@ class TestDataHandler(unittest.TestCase):
         self.assertEqual(preprocessed.iloc[1]['Clock'], pd.Timestamp('2026-01-02 10:00:00'))
 
 
+    def test_preprocess_data_fast_monotonic_sorting_optimization_and_parity(self):
+        # 1. AST check: ensure preprocess_data checks strictly increasing order via np.diff or diff
+        import ast
+        handler_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data_handler.py'))
+        with open(handler_path, 'r', encoding='utf-8') as f:
+            tree = ast.parse(f.read())
+
+        found_diff_optimization = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == 'preprocess_data':
+                for child in ast.walk(node):
+                    if isinstance(child, ast.Attribute) and child.attr == 'diff':
+                        found_diff_optimization = True
+                        break
+        self.assertTrue(
+            found_diff_optimization,
+            "preprocess_data must use fast diff check to bypass redundant lexsort on chronological data"
+        )
+
+        # 2. Functional & Parity checks across multiple datasets
+        import data_handler
+        def baseline_preprocess(df_in):
+            df = df_in.copy()
+            if df.empty:
+                return data_handler._empty_preprocessed_df(df)
+            if 'Clock' not in df.columns:
+                return data_handler._empty_preprocessed_df(df)
+            if 'kW_Import' not in df.columns:
+                df['kW_Import'] = 0.0
+            if 'Voltage' not in df.columns:
+                df['Voltage'] = 220.0
+            num_kw = pd.to_numeric(df['kW_Import'], errors='coerce')
+            mask_kw = num_kw.isna()
+            if mask_kw.any():
+                clean_str_kw = df.loc[mask_kw, 'kW_Import'].astype(str).str.replace(r'[^\d.-]', '', regex=True)
+                num_kw.loc[mask_kw] = pd.to_numeric(clean_str_kw, errors='coerce')
+            df['kW_Import'] = num_kw.fillna(0)
+            num_v = pd.to_numeric(df['Voltage'], errors='coerce')
+            mask_v = num_v.isna()
+            if mask_v.any():
+                clean_str_v = df.loc[mask_v, 'Voltage'].astype(str).str.replace(r'[^\d.-]', '', regex=True)
+                num_v.loc[mask_v] = pd.to_numeric(clean_str_v, errors='coerce')
+            df['Voltage'] = num_v.fillna(220.0)
+            df['Clock'] = data_handler.fast_parse_datetime(df['Clock'], dayfirst=True)
+            df = df.dropna(subset=['Clock']).reset_index(drop=True)
+            df = df.sort_values(['Clock', 'kW_Import'], ascending=[True, False])
+            df = df.drop_duplicates(subset=['Clock'], keep='first').reset_index(drop=True)
+            if df.empty:
+                return data_handler._empty_preprocessed_df(df)
+            df['Date'] = df['Clock'].dt.normalize()
+            clock_dt = df['Clock'].dt
+            ym = clock_dt.year * 100 + clock_dt.month
+            ym_dict = {v: f'{v // 100:04d}-{v % 100:02d}' for v in ym.unique()}
+            df['Month'] = ym.map(ym_dict)
+            hm = clock_dt.hour * 60 + clock_dt.minute
+            hm_dict = {v: f'{v // 60:02d}:{v % 60:02d}' for v in hm.unique()}
+            df['Time_Str'] = hm.map(hm_dict)
+            df['kWh_15min'] = df['kW_Import'] / 4.0
+            return df
+
+        np.random.seed(42)
+        dates_a = pd.date_range("2026-01-01", periods=1000, freq="15min")
+        df_a = pd.DataFrame({
+            'Clock': dates_a,
+            'kW_Import': np.random.uniform(10, 200, size=len(dates_a)).round(2),
+            'Voltage': np.random.uniform(218, 222, size=len(dates_a)).round(1)
+        })
+        pd.testing.assert_frame_equal(preprocess_data(df_a), baseline_preprocess(df_a))
+
+        df_b = df_a.sample(frac=1.0, random_state=42).reset_index(drop=True)
+        pd.testing.assert_frame_equal(preprocess_data(df_b), baseline_preprocess(df_b))
+
+        df_c = pd.DataFrame({
+            'Clock': [
+                pd.Timestamp('2026-01-01 00:00:00'),
+                pd.Timestamp('2026-01-01 00:00:00'),
+                pd.Timestamp('2026-01-01 00:15:00'),
+                pd.Timestamp('2026-01-01 00:15:00'),
+                pd.Timestamp('2026-01-01 00:30:00')
+            ],
+            'kW_Import': [10.0, 50.0, 100.0, 20.0, 30.0],
+            'Voltage': [220.0, 221.0, 220.0, 220.0, 220.0]
+        })
+        pd.testing.assert_frame_equal(preprocess_data(df_c), baseline_preprocess(df_c))
+
+        df_d = pd.DataFrame({
+            'Clock': [d.strftime("%d/%m/%Y %H:%M") for d in dates_a[:100]],
+            'kW_Import': ["150.5"] * 100,
+            'Voltage': ["220.0"] * 100
+        })
+        pd.testing.assert_frame_equal(preprocess_data(df_d), baseline_preprocess(df_d))
+
+
 if __name__ == '__main__':
     unittest.main()
