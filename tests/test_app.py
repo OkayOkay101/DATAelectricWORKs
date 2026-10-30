@@ -2,6 +2,22 @@ import unittest
 import pandas as pd
 
 class TestApp(unittest.TestCase):
+    def test_convert_df_to_csv_sanitizes_formula_injection(self):
+        """Ensure convert_df_to_csv invokes sanitize_dataframe_for_csv."""
+        import ast
+        import os
+        app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.py')
+        with open(app_path, 'r', encoding='utf-8') as f:
+            tree = ast.parse(f.read())
+        found_sanitization = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == 'convert_df_to_csv':
+                for child in ast.walk(node):
+                    if isinstance(child, ast.Call) and getattr(child.func, 'id', '') == 'sanitize_dataframe_for_csv':
+                        found_sanitization = True
+                        break
+        self.assertTrue(found_sanitization, "convert_df_to_csv must invoke sanitize_dataframe_for_csv")
+
     def test_regression_date_update(self):
         """
         Regression test: Ensure that shifting 'Clock' updates 'Date' correctly

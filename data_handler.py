@@ -3,6 +3,69 @@ import streamlit as st
 import numpy as np
 import io
 import logging
+import re
+
+# ค่าคงที่สำหรับป้องกัน CSV / Formula Injection (CWE-1236)
+PURE_NUMBER_PATTERN = re.compile(r'^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$')
+DANGEROUS_FORMULA_PREFIXES = ('=', '@', '\t', '\r')
+
+
+def sanitize_csv_cell(val):
+    """
+    ฆ่าเชื้อข้อมูลเซลล์เพื่อป้องกัน CSV / Formula Injection (CWE-1236)
+    ตามแนวทางความปลอดภัยของ OWASP: หากค่าข้อความขึ้นต้นด้วย =, @, tab, cr
+    หรือเครื่องหมาย +, - ที่ไม่ใช่ตัวเลขล้วน ให้เติม ' นำหน้าเพื่อให้โปรแกรมสเปรดชีต
+    (เช่น Excel, Calc) แสดงผลเป็นข้อความธรรมดาแทนการรันสูตร
+    """
+    if not isinstance(val, str):
+        return val
+    if not val:
+        return val
+
+    first_char = val[0]
+    stripped = val.lstrip()
+    stripped_char = stripped[0] if stripped else ''
+
+    if first_char in DANGEROUS_FORMULA_PREFIXES or stripped_char in DANGEROUS_FORMULA_PREFIXES:
+        return f"'{val}"
+
+    if first_char in ('+', '-') or stripped_char in ('+', '-'):
+        if not PURE_NUMBER_PATTERN.match(stripped):
+            return f"'{val}"
+
+    return val
+
+
+def sanitize_dataframe_for_csv(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    ป้องกัน Formula Injection สำหรับ DataFrame ทั้งตารางก่อนส่งออกเป็นไฟล์ CSV
+    ครอบคลุมทั้งชื่อคอลัมน์และข้อมูลในคอลัมน์ที่เป็น string/object
+    โดยยังคงรักษาค่าตัวเลขและวันเวลาเดิมอย่างถูกต้อง
+    """
+    if df is None:
+        return df
+
+    df_clean = df.copy()
+
+    # ทำความสะอาดชื่อคอลัมน์
+    new_cols = []
+    for c in df_clean.columns:
+        if isinstance(c, str):
+            new_cols.append(sanitize_csv_cell(c))
+        else:
+            new_cols.append(c)
+    df_clean.columns = new_cols
+
+    if df_clean.empty:
+        return df_clean
+
+    # ทำความสะอาดข้อมูลเฉพาะคอลัมน์ที่เป็น string หรือ object
+    for col in df_clean.columns:
+        if df_clean[col].dtype == object or pd.api.types.is_string_dtype(df_clean[col]):
+            df_clean[col] = df_clean[col].map(sanitize_csv_cell)
+
+    return df_clean
+
 
 # ค่าคงที่สำหรับกรองข้อมูลที่ผิดปกติ (Outliers)
 DEFAULT_OUTLIER_KW_MAX = 2000000
