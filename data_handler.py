@@ -654,7 +654,8 @@ def get_usage_snapshots(df):
     # Fast vectorized format %d/%m/%y %H:%M -> e.g. 2026-01-01 00:00:00 -> 01/01/26 00:00
     c_str = target_clocks.astype(str)
     # yyyy-mm-dd hh:mm:ss -> dd/mm/yy hh:mm
-    formatted = (c_str.str.slice(8, 10) + '/' + c_str.str.slice(5, 7) + '/' + c_str.str.slice(2, 4) + ' ' + c_str.str.slice(11, 16)).to_numpy()
+    time_series = c_str.str.slice(11, 16).replace('', '00:00')
+    formatted = (c_str.str.slice(8, 10) + '/' + c_str.str.slice(5, 7) + '/' + c_str.str.slice(2, 4) + ' ' + time_series).to_numpy()
 
     num_sessions = len(starts)
     s_times = formatted[:num_sessions]
