@@ -119,6 +119,21 @@ class TestApp(unittest.TestCase):
             self.assertEqual(raw_table.value.columns.tolist(), expected_columns)
             self.assertIn('"hidden": true', raw_table.proto.columns)
 
+            # Verify Tab 2 (Daily Insights) metrics
+            self.assertIn("🔥 โหลดสูงสุดประจำวัน (Peak)", metrics, "Daily peak demand metric missing")
+            self.assertIn("📈 โหลดเฉลี่ยประจำวัน", metrics, "Daily average load metric missing")
+            self.assertEqual(metrics["🔥 โหลดสูงสุดประจำวัน (Peak)"], "110.00 kW")
+            self.assertEqual(metrics["📈 โหลดเฉลี่ยประจำวัน"], "105.00 kW")
+
+            # Verify Tab 2 daily period summary table has hidden index
+            summary_table = at.dataframe[1]
+            self.assertIn('"hidden": true', summary_table.proto.columns)
+
+            # Verify Tab 2 daily download button exists with help tooltip
+            tab2_dl_buttons = [db for db in at.download_button if "ดาวน์โหลดข้อมูลดิบรายวัน" in db.label]
+            self.assertEqual(len(tab2_dl_buttons), 1, "Expected Tab 2 daily download button")
+            self.assertTrue(tab2_dl_buttons[0].help and "CSV" in tab2_dl_buttons[0].help, "Expected Tab 2 download button help tooltip")
+
             # Verify Tab 3 (Shift Graph) comparison metrics
             self.assertIn("🔥 โหลดสูงสุดเปรียบเทียบ (Peak)", metrics, "Shift graph peak demand metric missing")
             self.assertIn("⚡ พลังงานช่วง On-Peak", metrics, "Shift graph on-peak energy metric missing")
