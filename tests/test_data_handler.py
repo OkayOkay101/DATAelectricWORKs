@@ -993,5 +993,97 @@ class TestDataHandler(unittest.TestCase):
         self.assertEqual(df_preprocessed.iloc[0]['Clock'], pd.Timestamp('2026-01-01 00:15:00'))
 
 
+    def test_parse_excel_df_descriptive_date_column_preserves_multi_day_data(self):
+        # When column header specifies date format like 'Date (DD/MM/YYYY)',
+        # parse_excel_df must recognize it as the date column so multi-day data
+        # is merged with time and not dropped by drop_duplicates in preprocess_data.
+        df_raw = pd.DataFrame([
+            ['Date (DD/MM/YYYY)', 'Time', 'kW', 'Voltage'],
+            ['01/01/2026', '10:00', '100.0', '220.0'],
+            ['01/01/2026', '10:15', '110.0', '220.0'],
+            ['02/01/2026', '10:00', '120.0', '220.0'],
+            ['02/01/2026', '10:15', '130.0', '220.0'],
+            ['03/01/2026', '10:00', '140.0', '220.0'],
+            ['03/01/2026', '10:15', '150.0', '220.0'],
+        ])
+        parsed = parse_excel_df(df_raw)
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed['Clock'].tolist(), [
+            '01/01/2026 10:00', '01/01/2026 10:15',
+            '02/01/2026 10:00', '02/01/2026 10:15',
+            '03/01/2026 10:00', '03/01/2026 10:15'
+        ])
+        preprocessed = preprocess_data(parsed)
+        self.assertEqual(len(preprocessed), 6, "All 6 readings across 3 distinct days must be preserved")
+        self.assertEqual(preprocessed.iloc[0]['Clock'], pd.Timestamp('2026-01-01 10:00:00'))
+        self.assertEqual(preprocessed.iloc[2]['Clock'], pd.Timestamp('2026-01-02 10:00:00'))
+        self.assertEqual(preprocessed.iloc[4]['Clock'], pd.Timestamp('2026-01-03 10:00:00'))
+
+    def test_parse_text_lines_descriptive_date_column_preserves_multi_day_data(self):
+        # Verify parse_text_lines also handles 'Date (YYYY-MM-DD)' or 'Record Date'
+        lines = [
+            'Date (YYYY-MM-DD),Time,kW,Voltage',
+            '2026-01-01,10:00,100.0,220.0',
+            '2026-01-01,10:15,110.0,220.0',
+            '2026-01-02,10:00,120.0,220.0',
+            '2026-01-02,10:15,130.0,220.0',
+        ]
+        parsed = parse_text_lines(lines)
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed['Clock'].tolist(), [
+            '2026-01-01 10:00', '2026-01-01 10:15',
+            '2026-01-02 10:00', '2026-01-02 10:15'
+        ])
+        preprocessed = preprocess_data(parsed)
+        self.assertEqual(len(preprocessed), 4)
+        self.assertEqual(preprocessed.iloc[0]['Clock'], pd.Timestamp('2026-01-01 10:00:00'))
+        self.assertEqual(preprocessed.iloc[2]['Clock'], pd.Timestamp('2026-01-02 10:00:00'))
+
+    def test_parse_excel_df_thai_descriptive_date_column(self):
+        # Thai header with date description: 'วันที่ (วว/ดด/ปปปป)'
+        df_raw = pd.DataFrame([
+            ['วันที่ (วว/ดด/ปปปป)', 'เวลา', 'กำลังไฟฟ้า (kW)', 'แรงดัน (V)'],
+            ['01/01/2026', '10:00', '100.0', '220.0'],
+            ['02/01/2026', '10:00', '120.0', '220.0'],
+        ])
+        parsed = parse_excel_df(df_raw)
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed['Clock'].tolist(), ['01/01/2026 10:00', '02/01/2026 10:00'])
+        preprocessed = preprocess_data(parsed)
+        self.assertEqual(len(preprocessed), 2)
+        self.assertEqual(preprocessed.iloc[0]['Clock'], pd.Timestamp('2026-01-01 10:00:00'))
+        self.assertEqual(preprocessed.iloc[1]['Clock'], pd.Timestamp('2026-01-02 10:00:00'))
+
+    def test_parse_excel_df_datetime_combined_not_mistaken_for_date_only(self):
+        # 'Date/Time' or 'DateTime' has both date and time, so it must map to clock_col, not date_col
+        df_raw = pd.DataFrame([
+            ['Date/Time', 'Active Power', 'Voltage'],
+            ['2026-01-01 10:00', '100.0', '220.0'],
+            ['2026-01-02 10:00', '120.0', '220.0'],
+        ])
+        parsed = parse_excel_df(df_raw)
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed['Clock'].tolist(), ['2026-01-01 10:00', '2026-01-02 10:00'])
+        preprocessed = preprocess_data(parsed)
+        self.assertEqual(len(preprocessed), 2)
+
+    def test_load_file_csv_with_descriptive_date_header(self):
+        import io
+        from data_handler import load_file
+        content = (
+            b"Date (DD/MM/YYYY),Time,kW_Import,Voltage\n"
+            b"01/01/2026,10:00,100.0,220.0\n"
+            b"02/01/2026,10:00,120.0,220.0\n"
+        )
+        buffer = io.BytesIO(content)
+        df = load_file(buffer, "csv")
+        self.assertIsNotNone(df)
+        self.assertEqual(df['Clock'].tolist(), ['01/01/2026 10:00', '02/01/2026 10:00'])
+        preprocessed = preprocess_data(df)
+        self.assertEqual(len(preprocessed), 2)
+        self.assertEqual(preprocessed.iloc[0]['Clock'], pd.Timestamp('2026-01-01 10:00:00'))
+        self.assertEqual(preprocessed.iloc[1]['Clock'], pd.Timestamp('2026-01-02 10:00:00'))
+
+
 if __name__ == '__main__':
     unittest.main()

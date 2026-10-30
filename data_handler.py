@@ -165,7 +165,7 @@ def parse_text_lines(lines, delimiter=','):
     for i, c in enumerate(cols):
         c_clean = c.replace(' ', '').replace('.', '').replace('_', '').replace('(', '').replace(')', '').replace('\n', '')
         
-        if c_clean == 'date' or 'วันที่' in c_clean: 
+        if ('date' in c_clean or 'วันที่' in c_clean) and not any(k in c_clean for k in ('time', 'clock', 'เวลา', 'update', 'candidate')):
             date_idx = i
         elif 'clock' in c_clean or 'ch1' == c_clean or 'time' in c_clean or 'datatime' in c_clean or 'เวลา' in c_clean: 
             clock_idx = i
@@ -417,7 +417,7 @@ def parse_excel_df(df_raw):
         c_str = str(c)
         c_clean = c_str.replace(' ', '').replace('.', '').replace('_', '').replace('(', '').replace(')', '').replace('\n', '')
         
-        if c_clean == 'date' or 'วันที่' in c_clean: 
+        if ('date' in c_clean or 'วันที่' in c_clean) and not any(k in c_clean for k in ('time', 'clock', 'เวลา', 'update', 'candidate')):
             date_col = c
         elif 'clock' in c_clean or 'ch1' == c_clean or 'time' in c_clean or 'datatime' in c_clean or 'เวลา' in c_clean: 
             clock_col = c
