@@ -522,5 +522,37 @@ class TestDataHandler(unittest.TestCase):
         self.assertEqual(len(large_actual), 10)
         self.assertLess(elapsed, 0.06, f"Expected elapsed < 0.06s, took {elapsed:.4f}s")
 
+    def test_get_usage_snapshots_midnight_boundary_formatting(self):
+        # Boundary timestamps at midnight (00:00) must retain the '00:00' time component in snapshot labels
+        df_midnight = pd.DataFrame({
+            'Clock': pd.to_datetime(['2026-01-01 00:00:00', '2026-01-02 00:00:00']),
+            'kW_Import': [100.0, 0.0]
+        })
+        snapshots = get_usage_snapshots(df_midnight)
+        self.assertEqual(len(snapshots), 1)
+        self.assertEqual(snapshots[0]['label'], "⚡ รอบที่ 1: 01/01/26 00:00 ถึง 02/01/26 00:00")
+
+    def test_get_usage_snapshots_single_row_active(self):
+        # A single active load row must produce a valid snapshot with complete timestamp formatting
+        df_single = pd.DataFrame({
+            'Clock': pd.to_datetime(['2026-01-01 00:00:00']),
+            'kW_Import': [50.0]
+        })
+        snapshots = get_usage_snapshots(df_single)
+        self.assertEqual(len(snapshots), 1)
+        self.assertEqual(snapshots[0]['start_idx'], 0)
+        self.assertEqual(snapshots[0]['end_idx'], 0)
+        self.assertEqual(snapshots[0]['label'], "⚡ รอบที่ 1: 01/01/26 00:00 ถึง 01/01/26 00:00")
+
+    def test_get_usage_snapshots_string_clock_at_midnight(self):
+        # String clock values at midnight boundaries must be parsed and formatted with full time component
+        df_str = pd.DataFrame({
+            'Clock': ['01/01/2026 00:00', '02/01/2026 00:00'],
+            'kW_Import': [100.0, 0.0]
+        })
+        snapshots = get_usage_snapshots(df_str)
+        self.assertEqual(len(snapshots), 1)
+        self.assertEqual(snapshots[0]['label'], "⚡ รอบที่ 1: 01/01/26 00:00 ถึง 02/01/26 00:00")
+
 if __name__ == '__main__':
     unittest.main()
