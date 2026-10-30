@@ -129,6 +129,32 @@ class TestApp(unittest.TestCase):
 
             # We check if a download button is created after simulating shifting time
             self.assertTrue(len(at.download_button) > 0, "No download button found after time shifting")
+
+            # Verify Tab 4 (Cost Simulator) shows outcome summary banner
+            info_texts = [inf.value for inf in at.info if "ผลการจำลอง" in inf.value]
+            self.assertTrue(len(info_texts) > 0, "Expected simulation outcome info banner for unchanged rate")
+            self.assertIn("ค่าไฟฟ้าคงเดิม", info_texts[0])
+
+            # Verify Tab 4 simulated raw table has Thai headers with units and hidden index
+            self.assertGreaterEqual(len(at.dataframe), 4, "Expected at least 4 dataframes rendered after simulation")
+            sim_table = at.dataframe[3]
+            expected_sim_columns = [
+                'วัน-เวลา (Timestamp)',
+                'กำลังไฟฟ้า (kW)',
+                'พลังงานไฟฟ้า (kWh)',
+                'ช่วงเวลา (Period)',
+                'อัตราค่าไฟ (บาท/หน่วย)',
+                'ค่าไฟฟ้า (บาท)',
+                'สถานะความผิดปกติ (Anomaly)'
+            ]
+            self.assertEqual(sim_table.value.columns.tolist(), expected_sim_columns)
+            self.assertIn('"hidden": true', sim_table.proto.columns)
+
+            # Verify Tab 4 dedicated download button
+            download_labels = [db.label for db in at.download_button]
+            self.assertIn("📥 ดาวน์โหลดผลการจำลองค่าไฟ (.csv)", download_labels)
         finally:
             if mock_st is not None:
                 sys.modules['streamlit'] = mock_st
+
+
