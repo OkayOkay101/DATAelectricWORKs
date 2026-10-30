@@ -27,6 +27,9 @@ def _apply_tou_and_anomaly_cached(df, sensitivity, p_start, p_end, p_rate, op_ra
                 df[col] = df[col].astype(dtype)
         return df
 
+    if 'Clock' not in df.columns:
+        df['Clock'] = pd.NaT
+
     clock_series = df['Clock']
     # Ensure clock_series is datetime64 for vectorized integer nanosecond arithmetic
     if not pd.api.types.is_datetime64_any_dtype(clock_series):
@@ -84,6 +87,8 @@ def _apply_tou_and_anomaly_cached(df, sensitivity, p_start, p_end, p_rate, op_ra
     else:
         is_peak_time = (curr_sec >= start_sec) | (curr_sec < end_sec)
 
+    is_peak_time = is_peak_time & valid_clock_mask
+
     # ⚡ เงื่อนไขใหม่: เริ่มต้นให้เป็น Off-Peak ทั้งหมด
     df['Period_Detail'] = 'Off-Peak'
     df['Rate_THB'] = op_rate
@@ -101,14 +106,21 @@ def _apply_tou_and_anomaly_cached(df, sensitivity, p_start, p_end, p_rate, op_ra
     df.loc[holiday_condition, 'Period_Detail'] = 'Holiday'
     df.loc[holiday_condition, 'Rate_THB'] = op_rate  # ใช้เรทเดียวกับ Off-Peak ตามมาตรฐาน
 
+    if 'kW_Import' not in df.columns:
+        df['kW_Import'] = 0.0
+    elif not pd.api.types.is_numeric_dtype(df['kW_Import']):
+        df['kW_Import'] = pd.to_numeric(df['kW_Import'], errors='coerce').fillna(0.0)
+
     if 'kWh_15min' not in df.columns:
-        df['kWh_15min'] = df['kW_Import'] / 4.0 if 'kW_Import' in df.columns else 0.0
+        df['kWh_15min'] = df['kW_Import'] / 4.0
+    elif not pd.api.types.is_numeric_dtype(df['kWh_15min']):
+        df['kWh_15min'] = pd.to_numeric(df['kWh_15min'], errors='coerce').fillna(0.0)
 
     df['Cost_THB'] = df['kWh_15min'] * df['Rate_THB']
 
     # ตรวจจับ Anomaly (ความผิดปกติ)
     # ⚡ Bolt Optimization: Fast numpy array filtering for active load thresholding
-    kw_arr = df['kW_Import'].to_numpy()
+    kw_arr = df['kW_Import'].to_numpy(dtype='float64')
     active_mask = kw_arr > 0.05
     df['Anomaly_Type'] = 'ปกติ'
     if active_mask.any():
