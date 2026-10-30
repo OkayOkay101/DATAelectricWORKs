@@ -40,8 +40,8 @@ class TestApp(unittest.TestCase):
 
         try:
             from streamlit.testing.v1 import AppTest
-
             import os
+            import io
 
             # Resolve path to app.py based on repo root
             app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.py')
@@ -58,10 +58,7 @@ class TestApp(unittest.TestCase):
             self.assertTrue(len(at.markdown) > 0, "No markdown instructions found")
 
             # Simulate file upload to test UI interactions (e.g. download button)
-            import pandas as pd
-            import io
-
-            # Create a simple mock CSV
+            # Create a simple mock CSV (100 kW and 110 kW at 15-min intervals)
             df = pd.DataFrame({
                 'Clock': ['2026-01-01 10:00:00', '2026-01-01 10:15:00'],
                 'kW_Import': [100.0, 110.0],
@@ -77,6 +74,18 @@ class TestApp(unittest.TestCase):
             # Check for selectboxes or radio buttons to show the UI has responded
             self.assertTrue(len(at.selectbox) > 0, "No selectboxes found after file upload")
             self.assertTrue(len(at.radio) > 0, "No radio buttons found after file upload")
+
+            # Verify Tab 1 (Overview) executive summary metrics
+            metrics = {m.label: m.value for m in at.metric}
+            self.assertIn("⚡ พลังงานไฟฟ้ารวม", metrics, "Overview total energy metric missing")
+            self.assertIn("🔥 ความต้องการไฟฟ้าสูงสุด (Peak)", metrics, "Overview peak demand metric missing")
+            self.assertIn("💰 ค่าไฟฟ้าประเมินรวม", metrics, "Overview total cost metric missing")
+            self.assertIn("📈 โหลดไฟฟ้าเฉลี่ย", metrics, "Overview average load metric missing")
+
+            self.assertEqual(metrics["⚡ พลังงานไฟฟ้ารวม"], "52.50 kWh")
+            self.assertEqual(metrics["🔥 ความต้องการไฟฟ้าสูงสุด (Peak)"], "110.00 kW")
+            self.assertEqual(metrics["📈 โหลดไฟฟ้าเฉลี่ย"], "105.00 kW")
+            self.assertTrue("138.44" in metrics["💰 ค่าไฟฟ้าประเมินรวม"], f"Expected cost in metric, got: {metrics['💰 ค่าไฟฟ้าประเมินรวม']}")
 
             # Find number inputs to change shift minutes
             # App.py has: shift_mins_sim = st.number_input("⏱️ ใส่เวลาที่เลื่อน (นาที):", ...)
