@@ -602,5 +602,48 @@ class TestDataHandler(unittest.TestCase):
         self.assertGreater(len(midnight_rows), 0)
         self.assertTrue((midnight_rows['Time_Str'].str.slice(0, 2) == '00').all())
 
+    def test_sanitize_filename_path_traversal(self):
+        from data_handler import sanitize_filename
+        self.assertEqual(sanitize_filename("../../../../etc/passwd.csv"), "passwd.csv")
+        self.assertEqual(sanitize_filename("..\\..\\Windows\\System32\\cmd.exe.csv"), "cmd.exe.csv")
+        self.assertEqual(sanitize_filename("....//....//secret.xlsx"), "secret.xlsx")
+        self.assertEqual(sanitize_filename(".."), "unnamed_file")
+        self.assertEqual(sanitize_filename("../../.."), "unnamed_file")
+
+    def test_sanitize_filename_markdown_and_html_injection(self):
+        from data_handler import sanitize_filename
+        self.assertEqual(sanitize_filename("[คลิกที่นี่](https://phishing.site/login).csv"), "login.csv")
+        self.assertEqual(sanitize_filename("[คลิกที่นี่](phishing).csv"), "คลิกที่นี่phishing.csv")
+        self.assertEqual(sanitize_filename("<script>alert(1)</script>.csv"), "script.csv")
+        self.assertEqual(sanitize_filename("`code`~strike~.csv"), "codestrike.csv")
+
+    def test_sanitize_filename_crlf_and_control_chars(self):
+        from data_handler import sanitize_filename
+        self.assertEqual(sanitize_filename("report\r\nERROR: Fake log.csv"), "reportERROR: Fake log.csv")
+        self.assertEqual(sanitize_filename("null\x00byte.csv"), "nullbyte.csv")
+
+    def test_sanitize_filename_preserves_legitimate_names(self):
+        from data_handler import sanitize_filename
+        self.assertEqual(sanitize_filename("load_profile_2026.csv"), "load_profile_2026.csv")
+        self.assertEqual(sanitize_filename("ข้อมูลการใช้ไฟฟ้า มกราคม 2567.xlsx"), "ข้อมูลการใช้ไฟฟ้า มกราคม 2567.xlsx")
+        self.assertEqual(sanitize_filename(""), "unnamed_file")
+        self.assertEqual(sanitize_filename(None), "unnamed_file")
+
+    def test_app_uses_sanitize_filename_for_upload(self):
+        import ast
+        app_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'app.py'))
+        with open(app_path, 'r', encoding='utf-8') as f:
+            tree = ast.parse(f.read())
+        found_import = False
+        found_usage = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == 'data_handler':
+                if any(alias.name == 'sanitize_filename' for alias in node.names):
+                    found_import = True
+            if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'sanitize_filename':
+                found_usage = True
+        self.assertTrue(found_import, "app.py must import sanitize_filename from data_handler")
+        self.assertTrue(found_usage, "app.py must call sanitize_filename on uploaded files")
+
 if __name__ == '__main__':
     unittest.main()

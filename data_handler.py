@@ -76,6 +76,33 @@ ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls', 'txt'}
 MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
+def sanitize_filename(filename: str) -> str:
+    """
+    ทำความสะอาดชื่อไฟล์ที่อัปโหลดเพื่อป้องกัน Path Traversal (CWE-22),
+    Log Injection (CWE-117) และ Markdown/HTML Injection (CWE-79) บน UI
+    โดยตัด path separator (/, \\) และลำดับ directory traversal (..)
+    รวมถึงตัดอักขระควบคุม (control characters) และ escape อักขระ Markdown พิเศษ
+    """
+    if not filename or not isinstance(filename, str):
+        return "unnamed_file"
+
+    # 1. ตัด directory path เพื่อป้องกัน Path Traversal (รองรับทั้ง Unix '/' และ Windows '\\')
+    clean_name = re.split(r'[/\\]', filename)[-1].strip()
+
+    # 2. ป้องกันลำดับ path traversal ตกค้าง (เช่น ..)
+    clean_name = re.sub(r'^\.+', '', clean_name).strip()
+    if not clean_name:
+        return "unnamed_file"
+
+    # 3. กำจัด newline และ control characters เพื่อป้องกัน Log Injection (CWE-117)
+    clean_name = re.sub(r'[\r\n\t\x00-\x1f\x7f-\x9f]', '', clean_name)
+
+    # 4. ป้องกัน Markdown/HTML Injection บน UI (เช่น [phish](url) หรือรูปภาพใน st.toast)
+    clean_name = re.sub(r'[\[\]\(\)`~<>]', '', clean_name).strip()
+
+    return clean_name or "unnamed_file"
+
+
 def is_header_row(row_str):
     if not isinstance(row_str, str):
         row_str = str(row_str) if row_str is not None else ""
