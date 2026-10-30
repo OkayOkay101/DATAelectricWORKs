@@ -28,40 +28,51 @@ def _apply_tou_and_anomaly_cached(df, sensitivity, p_start, p_end, p_rate, op_ra
         return df
 
     clock_series = df['Clock']
+    # Ensure clock_series is datetime64 for vectorized integer nanosecond arithmetic
+    if not pd.api.types.is_datetime64_any_dtype(clock_series):
+        clock_series = pd.to_datetime(clock_series, errors='coerce')
+
+    # If timezone-aware, convert to naive local wall-clock time so integer day/hour arithmetic matches local schedule
+    if getattr(clock_series.dt, 'tz', None) is not None:
+        clock_series = clock_series.dt.tz_localize(None)
+
+    # Scale non-nanosecond units (e.g. datetime64[s], datetime64[ms], datetime64[us]) to datetime64[ns]
+    if clock_series.dtype != 'datetime64[ns]':
+        clock_series = clock_series.astype('datetime64[ns]')
+
     # ⚡ Bolt Optimization: Fast integer nanosecond arithmetic for weekday, holiday & peak-hour calculation.
     # Accessing pandas `.dt` accessors (.weekday, .normalize(), .hour, .minute, .second) multiple times
     # creates Python Timestamp objects and Series allocations taking ~70ms for 200k rows, ~105ms for 500k rows.
     # Operating directly on the underlying int64 nanosecond epoch array cuts datetime calculation time to <1ms.
-    if pd.api.types.is_datetime64_any_dtype(clock_series):
-        ns = clock_series.to_numpy(dtype='int64')
-        NS_IN_DAY = 86_400_000_000_000
-        days = ns // NS_IN_DAY
-        # 1970-01-01 was Thursday (weekday 3 in Python datetime: Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6)
-        is_weekend = ((days + 3) % 7) >= 5
-        df['Is_Weekend'] = is_weekend
+    ns = clock_series.to_numpy(dtype='int64')
+    NS_IN_DAY = 86_400_000_000_000
+    days = ns // NS_IN_DAY
+    # 1970-01-01 was Thursday (weekday 3 in Python datetime: Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6)
+    is_weekend = ((days + 3) % 7) >= 5
 
-        if holiday_tuple:
-            holiday_dt = pd.to_datetime(holiday_tuple, errors='coerce')
-            valid_holidays = holiday_dt.dropna()
-            if not valid_holidays.empty:
-                holiday_ns = valid_holidays.to_numpy(dtype='int64')
-                norm_ns = days * NS_IN_DAY
-                is_holiday = np.isin(norm_ns, holiday_ns)
-            else:
-                is_holiday = np.zeros(len(df), dtype=bool)
+    valid_clock_mask = clock_series.notna().to_numpy()
+    is_weekend = is_weekend & valid_clock_mask
+    df['Is_Weekend'] = is_weekend
+
+    if holiday_tuple:
+        holiday_dt = pd.to_datetime(holiday_tuple, errors='coerce')
+        valid_holidays = holiday_dt.dropna()
+        if not valid_holidays.empty:
+            if getattr(valid_holidays, 'tz', None) is not None:
+                valid_holidays = valid_holidays.tz_localize(None)
+            elif getattr(getattr(valid_holidays, 'dt', None), 'tz', None) is not None:
+                valid_holidays = valid_holidays.dt.tz_localize(None)
+            holiday_norm = valid_holidays.normalize() if hasattr(valid_holidays, 'normalize') else valid_holidays.dt.normalize()
+            holiday_ns = holiday_norm.astype('datetime64[ns]').to_numpy(dtype='int64')
+            norm_ns = days * NS_IN_DAY
+            is_holiday = np.isin(norm_ns, holiday_ns) & valid_clock_mask
         else:
             is_holiday = np.zeros(len(df), dtype=bool)
-        df['Is_Holiday'] = is_holiday
-
-        curr_sec = (ns % NS_IN_DAY) // 1_000_000_000
     else:
-        df['Is_Weekend'] = clock_series.dt.weekday >= 5
-        if holiday_tuple:
-            holiday_dt = pd.to_datetime(holiday_tuple, errors='coerce')
-            df['Is_Holiday'] = clock_series.dt.normalize().isin(holiday_dt)
-        else:
-            df['Is_Holiday'] = False
-        curr_sec = clock_series.dt.hour * 3600 + clock_series.dt.minute * 60 + clock_series.dt.second
+        is_holiday = np.zeros(len(df), dtype=bool)
+    df['Is_Holiday'] = is_holiday
+
+    curr_sec = (ns % NS_IN_DAY) // 1_000_000_000
 
     start_sec = p_start.hour * 3600 + p_start.minute * 60 + p_start.second
     end_sec = p_end.hour * 3600 + p_end.minute * 60 + p_end.second
@@ -89,6 +100,9 @@ def _apply_tou_and_anomaly_cached(df, sensitivity, p_start, p_end, p_rate, op_ra
     holiday_condition = is_weekend_arr | is_holiday_arr
     df.loc[holiday_condition, 'Period_Detail'] = 'Holiday'
     df.loc[holiday_condition, 'Rate_THB'] = op_rate  # ใช้เรทเดียวกับ Off-Peak ตามมาตรฐาน
+
+    if 'kWh_15min' not in df.columns:
+        df['kWh_15min'] = df['kW_Import'] / 4.0 if 'kW_Import' in df.columns else 0.0
 
     df['Cost_THB'] = df['kWh_15min'] * df['Rate_THB']
 
