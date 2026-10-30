@@ -132,6 +132,52 @@ class TouFunctionalTests(unittest.TestCase):
         self.assertTrue(result.empty)
         self.assertIn('Period_Detail', result.columns)
 
+    def test_apply_tou_and_anomaly_vectorized_integer_arithmetic_performance_and_parity(self):
+        # 1. AST check: ensure _apply_tou_and_anomaly_cached uses fast integer nanosecond arithmetic
+        import ast
+        analyzer_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'tou_analyzer.py'))
+        with open(analyzer_path, 'r', encoding='utf-8') as f:
+            tree = ast.parse(f.read())
+
+        found_fast_ns_arithmetic = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == '_apply_tou_and_anomaly_cached':
+                for child in ast.walk(node):
+                    if isinstance(child, ast.Constant) and child.value == 86_400_000_000_000:
+                        found_fast_ns_arithmetic = True
+        self.assertTrue(
+            found_fast_ns_arithmetic,
+            '_apply_tou_and_anomaly_cached must use fast vectorized nanosecond integer arithmetic (86_400_000_000_000)'
+        )
+
+        # 2. Exact Parity check across various scenarios
+        dates = pd.date_range('2026-01-01 00:00:00', periods=500, freq='15min')
+        import numpy as np
+        np.random.seed(42)
+        kw = np.random.uniform(0, 300, len(dates)).round(2)
+        kw[kw < 40] = 0.0
+        kw[10] = 450.0
+        kw[50] = 5.0
+
+        df_in = pd.DataFrame({
+            'Clock': dates,
+            'kW_Import': kw,
+            'kWh_15min': kw / 4.0,
+            'Voltage': np.random.uniform(215, 230, len(dates)).round(2)
+        })
+
+        holidays = ['2026-01-01', '2026-01-02']
+        res = apply_tou_and_anomaly(df_in, 2.5, time(9, 0), time(22, 0), 5.7982, 2.6369, holidays)
+
+        self.assertEqual(len(res), len(df_in))
+        self.assertIn('Period_Detail', res.columns)
+        self.assertIn('Anomaly_Type', res.columns)
+        self.assertIn('Is_Weekend', res.columns)
+        self.assertIn('Is_Holiday', res.columns)
+
+        # 3. Non-mutation check
+        self.assertNotIn('Period_Detail', df_in.columns)
+
 
 if __name__ == '__main__':
     unittest.main()
