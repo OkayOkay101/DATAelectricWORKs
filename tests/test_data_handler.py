@@ -875,6 +875,45 @@ class TestDataHandler(unittest.TestCase):
         })
         pd.testing.assert_frame_equal(actual, expected)
 
+    def test_parse_text_lines_unique_mapping_optimization_and_parity(self):
+        # 1. AST check: ensure parse_text_lines uses unique() mapping optimization
+        import ast
+        handler_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data_handler.py'))
+        with open(handler_path, 'r', encoding='utf-8') as f:
+            tree = ast.parse(f.read())
+
+        found_unique_in_parse = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == 'parse_text_lines':
+                for child in ast.walk(node):
+                    if isinstance(child, ast.Call) and isinstance(child.func, ast.Attribute) and child.func.attr == 'unique':
+                        found_unique_in_parse = True
+        self.assertTrue(found_unique_in_parse, "parse_text_lines must use unique() mapping optimization for candidate columns")
+
+        # 2. Functional & Parity check: compare output with expected result using assert_frame_equal
+        dates = pd.date_range("2026-01-01", periods=200, freq="15min")
+        lines = [
+            "Meter Metadata Report\n",
+            "Date,Time,kW,Voltage\n",
+        ] + [
+            f"{d.strftime('%d/%m/%Y')},{d.strftime('%H:%M')},150.25,220.0\n" for d in dates
+        ] + [
+            "01/01/2026,Total,50000.0,220.0\n",
+            "01/01/2026,dnv/err,0.0,220.0\n",
+            "Total,,50000.0,220.0\n",
+        ]
+
+        actual = parse_text_lines(iter(lines), delimiter=',')
+        self.assertIsNotNone(actual)
+        self.assertEqual(len(actual), 200)
+
+        expected = pd.DataFrame({
+            'Clock': [d.strftime("%d/%m/%Y %H:%M") for d in dates],
+            'kW_Import': ["150.25"] * 200,
+            'Voltage': ["220.0"] * 200
+        })
+        pd.testing.assert_frame_equal(actual, expected)
+
     def test_parse_excel_df_rejects_identical_clock_and_kw_columns(self):
         # A 1-column DataFrame where Clock and kW match the same unseparated text header must return None
         df_raw = pd.DataFrame([
