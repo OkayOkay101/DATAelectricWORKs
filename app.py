@@ -196,7 +196,14 @@ with tab1:
         low_all = all_anomalies[all_anomalies['Anomaly_Type'] == 'ไฟตก (Low)']
         if not low_all.empty: fig_all.add_trace(go.Scatter(x=low_all['Clock'], y=low_all['kW_Import'], mode='markers', name='ไฟตก', marker=dict(color='blue', size=8)))
 
-    fig_all.update_layout(height=400, margin=dict(l=20, r=20, t=40, b=20), template="plotly_white", hovermode="x unified")
+    fig_all.update_layout(
+        xaxis_title="วัน-เวลา (Timestamp)",
+        yaxis_title="กำลังไฟฟ้า (kW)",
+        height=400,
+        margin=dict(l=20, r=20, t=40, b=20),
+        template="plotly_white",
+        hovermode="x unified"
+    )
     st.plotly_chart(fig_all, width='stretch')
     if rate_type == "TOU (Time of Use)":
         st.info("💡 สีส้ม = On-Peak | สีเขียว = Off-Peak (กลางคืน/เสาร์-อาทิตย์) | สีเหลือง = Holiday (วันหยุดราชการ)")
@@ -206,13 +213,27 @@ with tab1:
     st.subheader("ความต้องการพลังงานไฟฟ้า (kW)")
     fig_kw_each = go.Figure()
     fig_kw_each.add_trace(go.Bar(x=df_display['Clock'], y=df_display['kW_Import'], marker_color="#457b9d", name="kW"))
-    fig_kw_each.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20), template="plotly_white", hovermode="x unified")
+    fig_kw_each.update_layout(
+        xaxis_title="วัน-เวลา (Timestamp)",
+        yaxis_title="กำลังไฟฟ้า (kW)",
+        height=350,
+        margin=dict(l=20, r=20, t=20, b=20),
+        template="plotly_white",
+        hovermode="x unified"
+    )
     st.plotly_chart(fig_kw_each, width='stretch')
 
     st.subheader("พลังงานไฟฟ้า (kWh) ราย 15 นาที")
     fig_kwh_each = go.Figure()
     fig_kwh_each.add_trace(go.Bar(x=df_display['Clock'], y=df_display['kWh_15min'], marker_color="#2a9d8f", name="kWh"))
-    fig_kwh_each.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20), template="plotly_white", hovermode="x unified")
+    fig_kwh_each.update_layout(
+        xaxis_title="วัน-เวลา (Timestamp)",
+        yaxis_title="พลังงานไฟฟ้า (kWh)",
+        height=350,
+        margin=dict(l=20, r=20, t=20, b=20),
+        template="plotly_white",
+        hovermode="x unified"
+    )
     st.plotly_chart(fig_kwh_each, width='stretch')
 
     st.subheader("📊 กราฟพลังงานไฟฟ้ารวมรายวัน (Daily Total kWh)")
@@ -229,7 +250,16 @@ with tab1:
         textposition='outside', 
         textfont=dict(size=14, color="#1d3557", family="Arial") 
     ))
-    fig_daily_kwh.update_layout(height=400, margin=dict(l=20, r=20, t=40, b=20), template="plotly_white", hovermode="x unified", xaxis=dict(type='category'), yaxis=dict(range=[0, max_kwh * 1.15]))
+    fig_daily_kwh.update_layout(
+        xaxis_title="วันที่ (Date)",
+        yaxis_title="พลังงานไฟฟ้ารวม (kWh)",
+        height=400,
+        margin=dict(l=20, r=20, t=40, b=20),
+        template="plotly_white",
+        hovermode="x unified",
+        xaxis=dict(type='category', title="วันที่ (Date)"),
+        yaxis=dict(title="พลังงานไฟฟ้ารวม (kWh)", range=[0, (max_kwh * 1.15) if (pd.notna(max_kwh) and max_kwh > 0) else 1.0])
+    )
     fig_daily_kwh.update_yaxes(showgrid=True, gridcolor='lightgrey', griddash='dot')
     st.plotly_chart(fig_daily_kwh, width='stretch')
 
@@ -246,6 +276,16 @@ with tab1:
             "พลังงานรวม (Total kWh)": st.column_config.NumberColumn("พลังงานรวม (Total kWh)", help="คลิกที่ชื่อคอลัมน์เพื่อเรียงลำดับจากมากไปน้อย", format="%.2f")
         }
     )
+
+    daily_summary_csv = convert_df_to_csv(df_daily_table)
+    st.download_button(
+        label="📥 ดาวน์โหลดสรุปพลังงานรายวัน (.csv)",
+        data=daily_summary_csv,
+        file_name="daily_energy_summary.csv",
+        mime="text/csv",
+        help="ดาวน์โหลดข้อมูลสรุปพลังงานไฟฟ้ารายวันในรูปแบบไฟล์ CSV"
+    )
+
     
 # ------------------------------------------
 # TAB 2: เจาะลึกรายวัน
