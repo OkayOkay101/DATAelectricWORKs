@@ -554,5 +554,53 @@ class TestDataHandler(unittest.TestCase):
         self.assertEqual(len(snapshots), 1)
         self.assertEqual(snapshots[0]['label'], "⚡ รอบที่ 1: 01/01/26 00:00 ถึง 02/01/26 00:00")
 
+    def test_preprocess_data_no_full_clock_astype_str(self):
+        # AST test: ensure preprocess_data does not convert entire df['Clock'] to str via astype
+        import ast
+        with open('data_handler.py', 'r', encoding='utf-8') as f:
+            tree = ast.parse(f.read())
+
+        found_clock_astype = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == 'preprocess_data':
+                for child in ast.walk(node):
+                    if isinstance(child, ast.Call) and isinstance(child.func, ast.Attribute) and child.func.attr == 'astype':
+                        if isinstance(child.func.value, ast.Subscript):
+                            sub = child.func.value
+                            if getattr(sub.value, 'id', '') == 'df' and getattr(sub.slice, 'value', '') == 'Clock':
+                                found_clock_astype = True
+
+        self.assertFalse(found_clock_astype, "preprocess_data should not convert entire df['Clock'] to str via astype(str)")
+
+    def test_preprocess_data_month_time_str_fast_mapping_parity(self):
+        # Parity test: verify fast numeric mapping produces exact parity with legacy string slicing
+        dates = pd.date_range("2023-12-31 23:00", "2024-03-01 01:00", freq="15min")
+        df_in = pd.DataFrame({
+            'Clock': dates.strftime('%d/%m/%Y %H:%M'),
+            'kW_Import': ['100.5'] * len(dates),
+            'Voltage': ['220.0'] * len(dates)
+        })
+
+        from data_handler import fast_parse_datetime
+        df_expected = df_in.copy()
+        df_expected['kW_Import'] = pd.to_numeric(df_expected['kW_Import'], errors='coerce').fillna(0)
+        df_expected['Voltage'] = pd.to_numeric(df_expected['Voltage'], errors='coerce').fillna(220.0)
+        df_expected['Clock'] = fast_parse_datetime(df_expected['Clock'], dayfirst=True)
+        df_expected = df_expected.dropna(subset=['Clock']).reset_index(drop=True)
+        df_expected = df_expected.sort_values(['Clock', 'kW_Import'], ascending=[True, False]).drop_duplicates(subset=['Clock'], keep='first').reset_index(drop=True)
+        df_expected['Date'] = df_expected['Clock'].dt.normalize()
+        legacy_clock_str = df_expected['Clock'].astype(str)
+        df_expected['Month'] = legacy_clock_str.str.slice(0, 7)
+        df_expected['Time_Str'] = legacy_clock_str.str.slice(11, 16).replace('', '00:00')
+        df_expected['kWh_15min'] = df_expected['kW_Import'] / 4.0
+
+        actual = preprocess_data(df_in)
+        pd.testing.assert_frame_equal(actual, df_expected)
+
+        # Verify midnight values
+        midnight_rows = actual[actual['Clock'].dt.hour == 0]
+        self.assertGreater(len(midnight_rows), 0)
+        self.assertTrue((midnight_rows['Time_Str'].str.slice(0, 2) == '00').all())
+
 if __name__ == '__main__':
     unittest.main()
