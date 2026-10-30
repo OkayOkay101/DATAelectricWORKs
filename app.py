@@ -148,6 +148,35 @@ tab1, tab2, tab3, tab4 = st.tabs([
 # TAB 1: ภาพรวมทั้งหมด
 # ------------------------------------------
 with tab1:
+    with st.container(border=True):
+        st.markdown("#### ⚡ สรุปภาพรวมพลังงาน (Executive Summary)")
+        m1, m2, m3, m4 = st.columns(4)
+        total_kwh_display = df_display['kWh_15min'].sum() if not df_display.empty else 0.0
+        peak_kw_display = df_display['kW_Import'].max() if not df_display.empty else 0.0
+        total_cost_display = df_display['Cost_THB'].sum() if not df_display.empty else 0.0
+        avg_kw_display = df_display['kW_Import'].mean() if not df_display.empty else 0.0
+
+        m1.metric(
+            "⚡ พลังงานไฟฟ้ารวม", 
+            f"{total_kwh_display:,.2f} kWh", 
+            help="ปริมาณพลังงานไฟฟ้ารวมทั้งหมดที่ใช้ในช่วงเวลาที่เลือก (หน่วย หรือ kWh)"
+        )
+        m2.metric(
+            "🔥 ความต้องการไฟฟ้าสูงสุด (Peak)", 
+            f"{peak_kw_display:,.2f} kW", 
+            help="กำลังไฟฟ้าสูงสุดที่เกิดขึ้นในช่วงเวลาที่เลือก (Peak Demand)"
+        )
+        m3.metric(
+            "💰 ค่าไฟฟ้าประเมินรวม", 
+            f"฿ {total_cost_display:,.2f}", 
+            help="ประมาณการค่าไฟฟ้าทั้งหมดตามอัตราค่าไฟที่ตั้งไว้"
+        )
+        m4.metric(
+            "📈 โหลดไฟฟ้าเฉลี่ย", 
+            f"{avg_kw_display:,.2f} kW", 
+            help="กำลังไฟฟ้าเฉลี่ยตลอดช่วงเวลาที่เลือก"
+        )
+
     st.subheader("กราฟแสดงความต้องการพลังงานไฟฟ้า (kW)")
     fig_all = go.Figure()
     # ⚡ Bolt Optimization: Use map instead of apply for simple dictionary lookup
