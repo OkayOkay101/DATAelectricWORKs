@@ -102,5 +102,36 @@ class TouFunctionalTests(unittest.TestCase):
         self.assertEqual(result['Anomaly_Type'].iloc[9], 'ไฟตก (Low)')
 
 
+    def test_holiday_list_none_treated_as_no_holidays(self):
+        frame = readings(['2026-10-19 12:00'])
+        result = apply_tou_and_anomaly(frame, 2.0, time(9), time(22), 5.0, 2.0, holiday_list=None)
+        self.assertEqual(result['Period_Detail'].tolist(), ['On-Peak'])
+        self.assertFalse(result['Is_Holiday'].iloc[0])
+
+    def test_empty_dataframe_returns_all_columns(self):
+        for empty_df in [
+            pd.DataFrame(),
+            pd.DataFrame(columns=['Clock', 'kW_Import', 'kWh_15min']),
+            pd.DataFrame(columns=['Clock', 'kW_Import', 'kWh_15min', 'Voltage']),
+        ]:
+            with self.subTest(cols=list(empty_df.columns)):
+                result = apply_tou_and_anomaly(empty_df, 2.0, time(9), time(22), 5.0, 2.0, holiday_list=[])
+                self.assertTrue(result.empty)
+                expected_cols = [
+                    'Clock', 'kW_Import', 'kWh_15min',
+                    'Is_Weekend', 'Is_Holiday', 'Period_Detail',
+                    'Rate_THB', 'Cost_THB', 'Anomaly_Type'
+                ]
+                for col in expected_cols:
+                    self.assertIn(col, result.columns)
+                if 'Voltage' in empty_df.columns:
+                    self.assertIn('Voltage', result.columns)
+
+    def test_empty_dataframe_with_holiday_list_none(self):
+        result = apply_tou_and_anomaly(pd.DataFrame(), 2.0, time(9), time(22), 5.0, 2.0, holiday_list=None)
+        self.assertTrue(result.empty)
+        self.assertIn('Period_Detail', result.columns)
+
+
 if __name__ == '__main__':
     unittest.main()
