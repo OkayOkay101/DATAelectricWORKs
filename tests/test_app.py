@@ -103,6 +103,22 @@ class TestApp(unittest.TestCase):
             self.assertEqual(metrics["📈 โหลดไฟฟ้าเฉลี่ย"], "105.00 kW")
             self.assertTrue("138.44" in metrics["💰 ค่าไฟฟ้าประเมินรวม"], f"Expected cost in metric, got: {metrics['💰 ค่าไฟฟ้าประเมินรวม']}")
 
+            # Verify Tab 2 (Daily Insights) raw data table has Thai headers with units and hidden index
+            self.assertGreater(len(at.dataframe), 2, "Expected at least 3 dataframes rendered")
+            raw_table = at.dataframe[2]
+            expected_columns = [
+                'วัน-เวลา (Timestamp)',
+                'กำลังไฟฟ้า (kW)',
+                'พลังงานไฟฟ้า (kWh)',
+                'แรงดันไฟฟ้า (V)',
+                'ช่วงเวลา (Period)',
+                'อัตราค่าไฟ (บาท/หน่วย)',
+                'ค่าไฟฟ้า (บาท)',
+                'สถานะความผิดปกติ (Anomaly)'
+            ]
+            self.assertEqual(raw_table.value.columns.tolist(), expected_columns)
+            self.assertIn('"hidden": true', raw_table.proto.columns)
+
             # Find number inputs to change shift minutes
             # App.py has: shift_mins_sim = st.number_input("⏱️ ใส่เวลาที่เลื่อน (นาที):", ...)
             # We assume it is one of the number_inputs
