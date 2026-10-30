@@ -473,5 +473,54 @@ class TestDataHandler(unittest.TestCase):
             self.assertEqual(len(df), 1, f"Failed to filter footer row: {footer}")
             self.assertEqual(df.iloc[0]['Clock'], "01/01/2026 00:15")
 
+    def test_get_usage_snapshots_selective_formatting_performance_and_parity(self):
+        # 1. Parity test: compare with baseline reference implementation
+        n = 1000
+        dates = pd.date_range("2026-01-01", periods=n, freq="15min")
+        kw = np.zeros(n)
+        for i in range(5):
+            start = i * 150 + 20
+            kw[start:start + 40] = 75.5
+        df_test = pd.DataFrame({'Clock': dates, 'kW_Import': kw})
+
+        # Baseline calculation
+        kw_array = df_test['kW_Import'].to_numpy()
+        is_pos = kw_array > 0
+        diff = np.diff(np.concatenate(([False], is_pos, [False])).astype(np.int8))
+        starts = np.where(diff == 1)[0]
+        ends = np.where(diff == -1)[0]
+        pad_s = np.maximum(0, starts - 1)
+        pad_e = np.minimum(len(df_test) - 1, np.where(ends < len(df_test), ends, len(df_test) - 1))
+        c_str = df_test['Clock'].astype(str)
+        fmt = c_str.str.slice(8, 10) + '/' + c_str.str.slice(5, 7) + '/' + c_str.str.slice(2, 4) + ' ' + c_str.str.slice(11, 16)
+        expected = [
+            {
+                'label': f"⚡ รอบที่ {i+1}: {fmt.iloc[pad_s[i]]} ถึง {fmt.iloc[pad_e[i]]}",
+                'start_idx': int(pad_s[i]),
+                'end_idx': int(pad_e[i])
+            }
+            for i in range(len(starts))
+        ]
+
+        actual = get_usage_snapshots(df_test)
+        self.assertEqual(actual, expected)
+        pd.testing.assert_frame_equal(pd.DataFrame(actual), pd.DataFrame(expected))
+
+        # 2. Performance benchmark: 100,000 rows must run in under 0.06s (previously ~0.16s)
+        n_large = 100000
+        dates_large = pd.date_range("2026-01-01", periods=n_large, freq="15min")
+        kw_large = np.zeros(n_large)
+        for i in range(10):
+            s = i * 8000 + 100
+            kw_large[s:s + 300] = 120.0
+        df_large = pd.DataFrame({'Clock': dates_large, 'kW_Import': kw_large})
+
+        import time
+        t0 = time.perf_counter()
+        large_actual = get_usage_snapshots(df_large)
+        elapsed = time.perf_counter() - t0
+        self.assertEqual(len(large_actual), 10)
+        self.assertLess(elapsed, 0.06, f"Expected elapsed < 0.06s, took {elapsed:.4f}s")
+
 if __name__ == '__main__':
     unittest.main()

@@ -645,16 +645,20 @@ def get_usage_snapshots(df):
     pad_e_array = np.minimum(df_len - 1, ends_adjusted)
 
     clock_series = df['Clock']
-    if not pd.api.types.is_datetime64_any_dtype(clock_series):
-        clock_series = fast_parse_datetime(clock_series, dayfirst=True)
+    # ⚡ Bolt Optimization: Only extract and format boundary timestamps instead of converting entire Series to strings
+    clock_indices = np.concatenate((pad_s_array, pad_e_array))
+    target_clocks = clock_series.iloc[clock_indices]
+    if not pd.api.types.is_datetime64_any_dtype(target_clocks):
+        target_clocks = fast_parse_datetime(target_clocks, dayfirst=True)
 
     # Fast vectorized format %d/%m/%y %H:%M -> e.g. 2026-01-01 00:00:00 -> 01/01/26 00:00
-    c_str = clock_series.astype(str)
+    c_str = target_clocks.astype(str)
     # yyyy-mm-dd hh:mm:ss -> dd/mm/yy hh:mm
-    formatted_times = c_str.str.slice(8, 10) + '/' + c_str.str.slice(5, 7) + '/' + c_str.str.slice(2, 4) + ' ' + c_str.str.slice(11, 16)
+    formatted = (c_str.str.slice(8, 10) + '/' + c_str.str.slice(5, 7) + '/' + c_str.str.slice(2, 4) + ' ' + c_str.str.slice(11, 16)).to_numpy()
 
-    s_times = formatted_times.iloc[pad_s_array].to_numpy()
-    e_times = formatted_times.iloc[pad_e_array].to_numpy()
+    num_sessions = len(starts)
+    s_times = formatted[:num_sessions]
+    e_times = formatted[num_sessions:]
 
     session_list = []
     for i in range(len(starts)):
