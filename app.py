@@ -287,7 +287,32 @@ with tab2:
         st.plotly_chart(fig_15min, width='stretch')
 
         st.markdown(f"#### 📋 ตารางข้อมูลดิบประจำวันที่ {sel_date}")
-        st.dataframe(day_df[['Clock', 'kW_Import', 'kWh_15min', 'Voltage', 'Period_Detail', 'Rate_THB', 'Cost_THB', 'Anomaly_Type']].reset_index(drop=True), width='stretch')
+        day_raw_table = day_df[['Clock', 'kW_Import', 'kWh_15min', 'Voltage', 'Period_Detail', 'Rate_THB', 'Cost_THB', 'Anomaly_Type']].copy()
+        day_raw_table.columns = [
+            'วัน-เวลา (Timestamp)',
+            'กำลังไฟฟ้า (kW)',
+            'พลังงานไฟฟ้า (kWh)',
+            'แรงดันไฟฟ้า (V)',
+            'ช่วงเวลา (Period)',
+            'อัตราค่าไฟ (บาท/หน่วย)',
+            'ค่าไฟฟ้า (บาท)',
+            'สถานะความผิดปกติ (Anomaly)'
+        ]
+        st.dataframe(
+            day_raw_table,
+            width='stretch',
+            hide_index=True,
+            column_config={
+                "วัน-เวลา (Timestamp)": st.column_config.DatetimeColumn("วัน-เวลา (Timestamp)", format="YYYY-MM-DD HH:mm"),
+                "กำลังไฟฟ้า (kW)": st.column_config.NumberColumn("กำลังไฟฟ้า (kW)", format="%.2f"),
+                "พลังงานไฟฟ้า (kWh)": st.column_config.NumberColumn("พลังงานไฟฟ้า (kWh)", format="%.2f"),
+                "แรงดันไฟฟ้า (V)": st.column_config.NumberColumn("แรงดันไฟฟ้า (V)", format="%.1f"),
+                "ช่วงเวลา (Period)": st.column_config.TextColumn("ช่วงเวลา (Period)"),
+                "อัตราค่าไฟ (บาท/หน่วย)": st.column_config.NumberColumn("อัตราค่าไฟ (บาท/หน่วย)", format="%.4f"),
+                "ค่าไฟฟ้า (บาท)": st.column_config.NumberColumn("ค่าไฟฟ้า (บาท)", format="%.2f"),
+                "สถานะความผิดปกติ (Anomaly)": st.column_config.TextColumn("สถานะความผิดปกติ (Anomaly)"),
+            }
+        )
 
 # ------------------------------------------
 # TAB 3: จำลองเลื่อนเวลา (กราฟเปรียบเทียบ)
