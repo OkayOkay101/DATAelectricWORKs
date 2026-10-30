@@ -330,5 +330,44 @@ class TestDataHandler(unittest.TestCase):
         self.assertEqual(df_out.iloc[0]['Time_Str'], "12:00")
         self.assertEqual(df_out.iloc[0]['kWh_15min'], 150.0 / 4.0)
 
+    def test_load_file_csv_optimization_and_parity(self):
+        import io
+        from data_handler import load_file
+        # 1. Test standard CSV parity: header=None fast path vs names=range(50) baseline
+        csv_content = (
+            "Date,Clock,kW_Import,Voltage\n"
+            "01/01/2026,00:15,100.5,220.0\n"
+            "01/01/2026,00:30,110.2,221.0\n"
+            "01/01/2026,00:45,120.0,220.5\n"
+        )
+        buf_baseline = io.BytesIO(csv_content.encode('utf-8-sig'))
+        df_baseline_raw = pd.read_csv(buf_baseline, encoding='utf-8-sig', names=range(50), dtype=str, low_memory=False)
+        expected_df = parse_excel_df(df_baseline_raw)
+
+        buf_test = io.BytesIO(csv_content.encode('utf-8-sig'))
+        with unittest.mock.patch('pandas.read_csv', side_effect=pd.read_csv) as mock_csv:
+            actual_df = load_file(buf_test, 'csv')
+            first_kwargs = mock_csv.call_args_list[0][1]
+            self.assertEqual(first_kwargs.get('header'), None)
+            self.assertNotIn('names', first_kwargs)
+
+        pd.testing.assert_frame_equal(actual_df, expected_df)
+
+        # 2. Test ragged CSV with metadata rows: fallback to names=range(50) must work and preserve parity
+        ragged_content = (
+            "Factory Electricity Report - Metadata Line 1\n"
+            "Station 02, Meter 4\n"
+            "Date,Clock,kW_Import,Voltage\n"
+            "01/01/2026,00:15,100.5,220.0\n"
+            "01/01/2026,00:30,110.2,221.0\n"
+        )
+        buf_ragged_baseline = io.BytesIO(ragged_content.encode('utf-8-sig'))
+        df_ragged_raw = pd.read_csv(buf_ragged_baseline, encoding='utf-8-sig', names=range(50), dtype=str, low_memory=False)
+        expected_ragged_df = parse_excel_df(df_ragged_raw)
+
+        buf_ragged_test = io.BytesIO(ragged_content.encode('utf-8-sig'))
+        actual_ragged_df = load_file(buf_ragged_test, 'csv')
+        pd.testing.assert_frame_equal(actual_ragged_df, expected_ragged_df)
+
 if __name__ == '__main__':
     unittest.main()

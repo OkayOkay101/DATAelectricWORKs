@@ -365,15 +365,25 @@ def load_file(uploaded_file, file_ext):
 
     # 2. หากเป็นไฟล์ CSV หรือ TXT
     if df_result is None and clean_ext in ['csv', 'txt']:
-        # 2.1 ลองใช้ Pandas โดยตั้งค่า names=range(50)
+        # 2.1 ลองใช้ Pandas
+        # ⚡ Bolt Optimization: Try header=None first for fast C-speed reading on regular CSVs without allocating 50 columns.
+        # Fallback to names=range(50) only if ragged/inconsistent columns trigger ParserError.
         try:
             try:
                 uploaded_file.seek(0)
-                df_raw = pd.read_csv(uploaded_file, encoding='utf-8-sig', names=range(50), dtype=str, low_memory=False)
+                try:
+                    df_raw = pd.read_csv(uploaded_file, encoding='utf-8-sig', header=None, dtype=str, low_memory=False)
+                except Exception:
+                    uploaded_file.seek(0)
+                    df_raw = pd.read_csv(uploaded_file, encoding='utf-8-sig', names=range(50), dtype=str, low_memory=False)
             except Exception as e:
                 logging.warning(f"Failed to read CSV with utf-8-sig: {e}")
                 uploaded_file.seek(0)
-                df_raw = pd.read_csv(uploaded_file, encoding='cp874', names=range(50), dtype=str, low_memory=False)
+                try:
+                    df_raw = pd.read_csv(uploaded_file, encoding='cp874', header=None, dtype=str, low_memory=False)
+                except Exception:
+                    uploaded_file.seek(0)
+                    df_raw = pd.read_csv(uploaded_file, encoding='cp874', names=range(50), dtype=str, low_memory=False)
             df_result = parse_excel_df(df_raw)
         except Exception as e:
             logging.warning(f"Failed to parse CSV with pandas: {e}")
