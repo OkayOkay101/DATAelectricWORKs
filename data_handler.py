@@ -270,16 +270,19 @@ def parse_text_lines(lines, delimiter=','):
     kw_col = get_col(kw_idx, "0").replace('', '0')
     v_col = get_col(v_idx, "220").replace('', '220')
 
-    d_lower = d_col.str.lower()
-    c_lower = c_col.str.lower()
+    d_clean = d_col.str.lower().str.strip()
+    c_clean = c_col.str.lower().str.strip()
+
+    invalid_pattern = r'^(?:total.*|p|op|h|kwh|nan)$'
+    invalid_clock_pattern = r'^(?:total.*|p|op|h|kwh|nan|dnv/err)$'
 
     mask_d = pd.Series(True, index=df_raw.index)
     if date_idx != -1:
-        has_invalid_d = d_lower.str.contains('total|p|op|h|kwh|nan', regex=True, na=False)
-        mask_d = ~(has_invalid_d | (d_lower == ''))
+        has_invalid_d = d_clean.str.contains(invalid_pattern, regex=True, na=False)
+        mask_d = ~(has_invalid_d | (d_clean == ''))
 
-    has_invalid_c = c_lower.str.contains('total|p|op|h|kwh|nan|dnv/err', regex=True, na=False)
-    mask_c = ~(has_invalid_c | (c_lower == ''))
+    has_invalid_c = c_clean.str.contains(invalid_clock_pattern, regex=True, na=False)
+    mask_c = ~(has_invalid_c | (c_clean == ''))
 
     valid_mask = mask_c & mask_d
 
