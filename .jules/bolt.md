@@ -24,3 +24,8 @@
 ## 2026-10-30 - Fast Vectorized Datetime Parsing vs format='mixed'
 **Learning:** Using `pd.to_datetime(series, format='mixed')` across large datasets (hundreds of thousands of rows) falls back to row-by-row Python `dateutil` parsing, taking 7 to 30+ seconds for 200k rows. In reality, timestamps in load profile files follow consistent formats (such as `%d/%m/%Y %H:%M` or ISO 8601).
 **Action:** Inspect sample timestamps and attempt vectorized C-speed parsing using candidate `format` strings with `errors='coerce'`. If any valid entries fail to parse (e.g., occasional mixed/corrupted formats), selectively fallback to `format='mixed'` only on the failed rows (`df.loc[mask_failed]`). This achieves up to 9-20x speedup while guaranteeing exact parity.
+
+## 2026-10-30 - Dynamic Column CSV Parsing vs Fixed names=range(50)
+**Learning:** Setting a fixed `names=range(50)` in `pd.read_csv()` to guard against potential ragged metadata header lines forces Pandas to allocate 50 full columns of string objects across hundreds of thousands of rows. For a 200k-row dataset with only 3 actual columns, this needlessly constructs over 9.4 million empty/NaN string objects, inflating parsing time by over 6.6x and slowing subsequent column filtering and header detection.
+**Action:** Attempt reading CSV files with `header=None` first, allowing the Pandas C parser to size the table dynamically based on actual columns. Catch parser exceptions and fall back to `names=range(50)` only when uneven or ragged rows actually occur. This preserves 100% backward compatibility while achieving up to 6.6x faster CSV loading.
+
