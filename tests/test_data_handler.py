@@ -743,6 +743,101 @@ class TestDataHandler(unittest.TestCase):
         })
         assert_frame_equal(sanitized, expected_df)
 
+    def test_preprocess_data_missing_voltage_column(self):
+        # When Voltage column is omitted from input, preprocess_data must default to 220.0 without KeyError
+        df_in = pd.DataFrame({
+            'Clock': ["01/01/2026 00:15", "01/01/2026 00:30"],
+            'kW_Import': ["100.5", "120.0"]
+        })
+        df_out = preprocess_data(df_in)
+        self.assertEqual(len(df_out), 2)
+        self.assertIn('Voltage', df_out.columns)
+        self.assertTrue((df_out['Voltage'] == 220.0).all())
+        self.assertEqual(df_out.iloc[0]['kW_Import'], 100.5)
+
+    def test_preprocess_data_missing_kw_import_column(self):
+        # When kW_Import column is omitted, preprocess_data must default kW_Import and kWh_15min to 0.0
+        df_in = pd.DataFrame({
+            'Clock': ["01/01/2026 00:15"],
+            'Voltage': ["230.0"]
+        })
+        df_out = preprocess_data(df_in)
+        self.assertEqual(len(df_out), 1)
+        self.assertIn('kW_Import', df_out.columns)
+        self.assertIn('kWh_15min', df_out.columns)
+        self.assertEqual(df_out.iloc[0]['kW_Import'], 0.0)
+        self.assertEqual(df_out.iloc[0]['kWh_15min'], 0.0)
+        self.assertEqual(df_out.iloc[0]['Voltage'], 230.0)
+
+    def test_preprocess_data_missing_clock_column(self):
+        # When Clock column is omitted, preprocess_data must return an empty DataFrame with standard columns
+        df_in = pd.DataFrame({
+            'kW_Import': ["100.5"],
+            'Voltage': ["220.0"]
+        })
+        df_out = preprocess_data(df_in)
+        self.assertTrue(df_out.empty)
+        expected_cols = ['Clock', 'kW_Import', 'Voltage', 'Date', 'Month', 'Time_Str', 'kWh_15min']
+        for col in expected_cols:
+            self.assertIn(col, df_out.columns)
+
+    def test_preprocess_data_empty_input_returns_standard_columns(self):
+        # Empty inputs (None, pd.DataFrame(), or empty with partial cols) must return standard schema
+        expected_cols = ['Clock', 'kW_Import', 'Voltage', 'Date', 'Month', 'Time_Str', 'kWh_15min']
+        for empty_input in [
+            None,
+            pd.DataFrame(),
+            pd.DataFrame(columns=['Clock', 'kW_Import', 'Voltage']),
+            pd.DataFrame(columns=['Clock']),
+        ]:
+            with self.subTest(inp=type(empty_input).__name__):
+                res = preprocess_data(empty_input)
+                self.assertTrue(res.empty)
+                for col in expected_cols:
+                    self.assertIn(col, res.columns)
+                self.assertTrue(pd.api.types.is_datetime64_any_dtype(res['Clock']))
+                self.assertTrue(pd.api.types.is_numeric_dtype(res['kW_Import']))
+                self.assertTrue(pd.api.types.is_numeric_dtype(res['Voltage']))
+                self.assertTrue(pd.api.types.is_datetime64_any_dtype(res['Date']))
+                self.assertTrue(pd.api.types.is_numeric_dtype(res['kWh_15min']))
+
+    def test_preprocess_data_all_invalid_clock_returns_standard_columns(self):
+        # When all Clock rows are invalid or missing, resulting empty DataFrame must have standard schema
+        df_in = pd.DataFrame({
+            'Clock': ["invalid_date_1", "", None],
+            'kW_Import': ["10.0", "20.0", "30.0"],
+            'Voltage': ["220", "220", "220"]
+        })
+        df_out = preprocess_data(df_in)
+        self.assertTrue(df_out.empty)
+        expected_cols = ['Clock', 'kW_Import', 'Voltage', 'Date', 'Month', 'Time_Str', 'kWh_15min']
+        for col in expected_cols:
+            self.assertIn(col, df_out.columns)
+
+    def test_preprocess_data_single_row(self):
+        # Single row input must correctly compute all derived fields
+        df_in = pd.DataFrame({
+            'Clock': ["15/05/2026 14:30"],
+            'kW_Import': ["80.0"],
+            'Voltage': ["225.0"]
+        })
+        df_out = preprocess_data(df_in)
+        self.assertEqual(len(df_out), 1)
+        self.assertEqual(df_out.iloc[0]['Clock'], pd.Timestamp('2026-05-15 14:30:00'))
+        self.assertEqual(df_out.iloc[0]['Date'], pd.Timestamp('2026-05-15'))
+        self.assertEqual(df_out.iloc[0]['Month'], "2026-05")
+        self.assertEqual(df_out.iloc[0]['Time_Str'], "14:30")
+        self.assertEqual(df_out.iloc[0]['kW_Import'], 80.0)
+        self.assertEqual(df_out.iloc[0]['kWh_15min'], 20.0)
+        self.assertEqual(df_out.iloc[0]['Voltage'], 225.0)
+
+    def test_get_usage_snapshots_missing_columns(self):
+        # Incomplete DataFrame (missing kW_Import or Clock) must return empty list without KeyError
+        self.assertEqual(get_usage_snapshots(pd.DataFrame({'Clock': [pd.Timestamp('2026-01-01')]})), [])
+        self.assertEqual(get_usage_snapshots(pd.DataFrame({'kW_Import': [100.0]})), [])
+        self.assertEqual(get_usage_snapshots(pd.DataFrame({'Voltage': [220.0]})), [])
+
+
 
 if __name__ == '__main__':
     unittest.main()

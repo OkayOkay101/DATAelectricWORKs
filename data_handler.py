@@ -610,12 +610,42 @@ def fast_parse_datetime(series, dayfirst=True):
 
     return parsed
 
+STANDARD_PREPROCESSED_COLS = (
+    ('Clock', 'datetime64[ns]'),
+    ('kW_Import', 'float64'),
+    ('Voltage', 'float64'),
+    ('Date', 'datetime64[ns]'),
+    ('Month', 'object'),
+    ('Time_Str', 'object'),
+    ('kWh_15min', 'float64'),
+)
+
+
+def _empty_preprocessed_df(template_df=None):
+    df_out = template_df.copy() if template_df is not None else pd.DataFrame()
+    for col, dtype in STANDARD_PREPROCESSED_COLS:
+        if col not in df_out.columns:
+            df_out[col] = pd.Series(dtype=dtype)
+        elif df_out[col].dtype == object and dtype != 'object':
+            df_out[col] = df_out[col].astype(dtype)
+    return df_out.iloc[:0]
+
+
 @st.cache_data
 def preprocess_data(df, kw_max=DEFAULT_OUTLIER_KW_MAX, v_max=DEFAULT_OUTLIER_V_MAX):
     if df is None or df.empty:
-        return pd.DataFrame()
+        return _empty_preprocessed_df(df)
         
     df = df.copy()
+
+    if 'Clock' not in df.columns:
+        return _empty_preprocessed_df(df)
+
+    if 'kW_Import' not in df.columns:
+        df['kW_Import'] = 0.0
+
+    if 'Voltage' not in df.columns:
+        df['Voltage'] = 220.0
     
     # ล้างข้อมูลให้เหลือเฉพาะตัวเลข
     # ⚡ Bolt Optimization: Attempt to_numeric first, and only use regex cleanup for failed values
@@ -648,7 +678,7 @@ def preprocess_data(df, kw_max=DEFAULT_OUTLIER_KW_MAX, v_max=DEFAULT_OUTLIER_V_M
     df = df.drop_duplicates(subset=['Clock'], keep='first').reset_index(drop=True)
     
     if df.empty:
-        return pd.DataFrame()
+        return _empty_preprocessed_df(df)
         
     df['Date'] = df['Clock'].dt.normalize()
 
@@ -674,6 +704,9 @@ def preprocess_data(df, kw_max=DEFAULT_OUTLIER_KW_MAX, v_max=DEFAULT_OUTLIER_V_M
 
 def get_usage_snapshots(df):
     if df is None or df.empty:
+        return []
+
+    if 'kW_Import' not in df.columns or 'Clock' not in df.columns:
         return []
 
     kw_array = df['kW_Import'].to_numpy()
