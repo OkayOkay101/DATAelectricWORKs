@@ -443,28 +443,69 @@ with tab4:
             diff_cost = new_cost - orig_cost
             c3_sim.metric("ค่าไฟฟ้าประเมินใหม่", f"฿ {new_cost:,.2f}", delta=f"{diff_cost:,.2f} ฿", delta_color="inverse")
             c4_sim.metric("จุดผิดปกติ (Anomaly)", f"{len(df_sim[df_sim['Anomaly_Type'] != 'ปกติ'])} จุด")
-            
+
+            # 🎯 กล่องสรุปผลต่างค่าไฟ (Simulation Outcome Alert Banner)
+            pct_change = (abs(diff_cost) / orig_cost * 100) if orig_cost > 0 else 0.0
+            if diff_cost < -0.005:
+                st.success(f"🎉 **ผลการจำลอง:** ประหยัดค่าไฟฟ้าได้ **฿ {abs(diff_cost):,.2f}** (ลดลง **{pct_change:.2f}%**) จากการเลื่อนเวลา {shift_mins_sim:+d} นาที")
+            elif diff_cost > 0.005:
+                st.warning(f"⚠️ **ผลการจำลอง:** ค่าไฟฟ้าเพิ่มขึ้น **฿ {diff_cost:,.2f}** (เพิ่มขึ้น **{pct_change:.2f}%**) จากการเลื่อนเวลา {shift_mins_sim:+d} นาที (ควรพิจารณาปรับช่วงเวลาใหม่)")
+            else:
+                st.info(f"ℹ️ **ผลการจำลอง:** ค่าไฟฟ้าคงเดิม ไม่มีการเปลี่ยนแปลง (ผลต่าง ฿ 0.00) จากการเลื่อนเวลา {shift_mins_sim:+d} นาที")
+
             st.markdown("##### 🧾 แยกรายละเอียดพลังงาน (เวลาจำลอง)")
             sim_cost_summary = df_sim.groupby('Period_Detail')[['kWh_15min', 'Cost_THB']].sum().reset_index()
             sim_dict = sim_cost_summary.set_index('Period_Detail').to_dict('index')
-            
+
             if rate_type == "TOU (Time of Use)":
                 sc1, sc2, sc3 = st.columns(3)
                 p_data_sim = sim_dict.get('On-Peak', {'kWh_15min': 0.0, 'Cost_THB': 0.0})
                 sc1.error(f"**🔴 On-Peak** ({p_rate} บ.)\n\nพลังงาน: {p_data_sim['kWh_15min']:,.2f} kWh\n\n**เป็นเงิน: ฿ {p_data_sim['Cost_THB']:,.2f}**")
-                
+
                 op_data_sim = sim_dict.get('Off-Peak', {'kWh_15min': 0.0, 'Cost_THB': 0.0})
                 sc2.success(f"**🟢 Off-Peak** ({op_rate} บ.)\n\nพลังงาน: {op_data_sim['kWh_15min']:,.2f} kWh\n\n**เป็นเงิน: ฿ {op_data_sim['Cost_THB']:,.2f}**")
-                
+
                 h_data_sim = sim_dict.get('Holiday', {'kWh_15min': 0.0, 'Cost_THB': 0.0})
                 sc3.warning(f"**🟡 Holiday** ({op_rate} บ.)\n\nพลังงาน: {h_data_sim['kWh_15min']:,.2f} kWh\n\n**เป็นเงิน: ฿ {h_data_sim['Cost_THB']:,.2f}**")
             else:
                 sim_total_kwh = df_sim['kWh_15min'].sum()
                 sim_total_cost = df_sim['Cost_THB'].sum()
                 st.info(f"**⚡ อัตราเดียว (Single Rate)** ({single_rate} บาท/หน่วย)\n\n⚡ **พลังงานรวมทั้งหมด:** {sim_total_kwh:,.2f} kWh\n\n💰 **เป็นเงินประเมินทั้งหมด:** ฿ {sim_total_cost:,.2f}")
-            
-            st.write("📋 **ข้อมูลดิบหลังจำลอง**")
-            st.dataframe(df_sim[['Clock', 'kW_Import', 'Period_Detail', 'Cost_THB']].reset_index(drop=True), width='stretch', height=200)
+
+            st.markdown("##### 📋 ตารางข้อมูลหลังจำลองเวลา")
+            sim_display_table = df_sim[['Clock', 'kW_Import', 'kWh_15min', 'Period_Detail', 'Rate_THB', 'Cost_THB', 'Anomaly_Type']].copy()
+            sim_display_table.columns = [
+                'วัน-เวลา (Timestamp)',
+                'กำลังไฟฟ้า (kW)',
+                'พลังงานไฟฟ้า (kWh)',
+                'ช่วงเวลา (Period)',
+                'อัตราค่าไฟ (บาท/หน่วย)',
+                'ค่าไฟฟ้า (บาท)',
+                'สถานะความผิดปกติ (Anomaly)'
+            ]
+            st.dataframe(
+                sim_display_table,
+                width='stretch',
+                hide_index=True,
+                column_config={
+                    "วัน-เวลา (Timestamp)": st.column_config.DatetimeColumn("วัน-เวลา (Timestamp)", format="YYYY-MM-DD HH:mm"),
+                    "กำลังไฟฟ้า (kW)": st.column_config.NumberColumn("กำลังไฟฟ้า (kW)", format="%.2f"),
+                    "พลังงานไฟฟ้า (kWh)": st.column_config.NumberColumn("พลังงานไฟฟ้า (kWh)", format="%.2f"),
+                    "ช่วงเวลา (Period)": st.column_config.TextColumn("ช่วงเวลา (Period)"),
+                    "อัตราค่าไฟ (บาท/หน่วย)": st.column_config.NumberColumn("อัตราค่าไฟ (บาท/หน่วย)", format="%.4f"),
+                    "ค่าไฟฟ้า (บาท)": st.column_config.NumberColumn("ค่าไฟฟ้า (บาท)", format="%.2f"),
+                    "สถานะความผิดปกติ (Anomaly)": st.column_config.TextColumn("สถานะความผิดปกติ (Anomaly)"),
+                }
+            )
+
+            sim_csv_data = convert_df_to_csv(df_sim)
+            st.download_button(
+                label="📥 ดาวน์โหลดผลการจำลองค่าไฟ (.csv)",
+                data=sim_csv_data,
+                file_name=f"cost_simulation_shift_{shift_mins_sim}mins.csv",
+                mime="text/csv",
+                help="ดาวน์โหลดข้อมูลผลการจำลองค่าไฟฟ้าตามช่วงเวลาที่เลือกในรูปแบบ CSV"
+            )
         else:
             st.info("รอการป้อนตัวเลขจำลองเวลา... (กรุณาใส่ตัวเลขที่ไม่ใช่ 0 ในช่องด้านบน)")
 
