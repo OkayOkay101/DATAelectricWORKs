@@ -705,5 +705,44 @@ class TestDataHandler(unittest.TestCase):
         self.assertTrue(found_import, "app.py must import sanitize_filename from data_handler")
         self.assertTrue(found_usage, "app.py must call sanitize_filename on uploaded files")
 
+    def test_sanitize_dataframe_for_csv_unique_mapping_optimization(self):
+        import data_handler
+        from pandas.testing import assert_frame_equal
+
+        df = pd.DataFrame({
+            "Period": ["On-Peak", "Off-Peak", "Holiday"] * 100,
+            "Anomaly": ["ปกติ", "ไฟตก (Low)", "=malicious"] * 100,
+            "kW": [10.5, 20.0, 30.5] * 100
+        })
+
+        call_count = 0
+        real_sanitize_cell = data_handler.sanitize_csv_cell
+
+        def counting_sanitize(val):
+            nonlocal call_count
+            call_count += 1
+            return real_sanitize_cell(val)
+
+        orig_func = data_handler.sanitize_csv_cell
+        data_handler.sanitize_csv_cell = counting_sanitize
+        try:
+            sanitized = data_handler.sanitize_dataframe_for_csv(df)
+        finally:
+            data_handler.sanitize_csv_cell = orig_func
+
+        # Headers: 3 columns. Unique cells in Period: 3. Unique cells in Anomaly: 3.
+        # Total sanitize_csv_cell calls must not exceed headers + unique values (3 + 3 + 3 = 9).
+        # In naive element-by-element mapping, this would be 3 + 300 + 300 = 603 calls.
+        self.assertLessEqual(call_count, 15, f"Expected unique-value mapping (<= 15 calls), got {call_count}")
+
+        expected_anomaly = ["ปกติ", "ไฟตก (Low)", "'=malicious"] * 100
+        expected_df = pd.DataFrame({
+            "Period": ["On-Peak", "Off-Peak", "Holiday"] * 100,
+            "Anomaly": expected_anomaly,
+            "kW": [10.5, 20.0, 30.5] * 100
+        })
+        assert_frame_equal(sanitized, expected_df)
+
+
 if __name__ == '__main__':
     unittest.main()
