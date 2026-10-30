@@ -237,16 +237,16 @@ with tab1:
             help="กำลังไฟฟ้าเฉลี่ยตลอดช่วงเวลาที่เลือก"
         )
 
-    st.subheader("กราฟแสดงความต้องการพลังงานไฟฟ้า (kW)")
+    st.subheader("📈 กราฟความต้องการพลังงานไฟฟ้ารวมและจุดผิดปกติ (kW)")
     fig_all = go.Figure()
     # ⚡ Bolt Optimization: Use map instead of apply for simple dictionary lookup
     color_map = {'Holiday': '#ffd166', 'On-Peak': '#e76f51', 'Off-Peak': '#2a9d8f'}
     colors = df_display['Period_Detail'].map(color_map).fillna('#2a9d8f')
     
     if is_bar:
-        fig_all.add_trace(go.Bar(x=df_display['Clock'], y=df_display['kW_Import'], marker_color=colors, name="kW (แยกสีช่วงเวลา)"))
+        fig_all.add_trace(go.Bar(x=df_display['Clock'], y=df_display['kW_Import'], marker_color=colors, name="กำลังไฟฟ้า (kW - แยกสีช่วงเวลา)"))
     else:
-        fig_all.add_trace(go.Scatter(x=df_display['Clock'], y=df_display['kW_Import'], mode='lines', fill='tozeroy', line=dict(color="#1d3557", width=2), name="kW (ภาพรวม)"))
+        fig_all.add_trace(go.Scatter(x=df_display['Clock'], y=df_display['kW_Import'], mode='lines', fill='tozeroy', line=dict(color="#1d3557", width=2), name="กำลังไฟฟ้า (kW - ภาพรวม)"))
     
     all_anomalies = df_display[df_display['Anomaly_Type'] != 'ปกติ']
     if not all_anomalies.empty:
@@ -265,13 +265,13 @@ with tab1:
     )
     st.plotly_chart(fig_all, width='stretch')
     if rate_type == "TOU (Time of Use)":
-        st.info("💡 สีส้ม = On-Peak | สีเขียว = Off-Peak (กลางคืน/เสาร์-อาทิตย์) | สีเหลือง = Holiday (วันหยุดราชการ)")
+        st.info("💡 สีส้ม = On-Peak | สีเขียว = Off-Peak (กลางคืน/เสาร์-อาทิตย์) | สีเหลือง = Holiday (วันหยุดราชการ) | 🔴 จุดสีแดง = โหลดสูงผิดปกติ | 🔵 จุดสีน้ำเงิน = ไฟตก")
     else:
-        st.info("💡 สีส้ม = เวลากลางวัน (09:00-22:00) | สีเขียว/เหลือง = เวลากลางคืนและวันหยุด (อ้างอิงช่วงเวลาเพื่อดูพฤติกรรม)")
+        st.info("💡 สีส้ม = เวลากลางวัน (09:00-22:00) | สีเขียว/เหลือง = เวลากลางคืนและวันหยุด (อ้างอิงช่วงเวลาเพื่อดูพฤติกรรม) | 🔴 จุดสีแดง = โหลดสูงผิดปกติ | 🔵 จุดสีน้ำเงิน = ไฟตก")
     
-    st.subheader("ความต้องการพลังงานไฟฟ้า (kW)")
+    st.subheader("⚡ กราฟความต้องการพลังงานไฟฟ้า (kW) ราย 15 นาที")
     fig_kw_each = go.Figure()
-    fig_kw_each.add_trace(go.Bar(x=df_display['Clock'], y=df_display['kW_Import'], marker_color="#457b9d", name="kW"))
+    fig_kw_each.add_trace(go.Bar(x=df_display['Clock'], y=df_display['kW_Import'], marker_color="#457b9d", name="กำลังไฟฟ้า (kW)"))
     fig_kw_each.update_layout(
         xaxis_title="วัน-เวลา (Timestamp)",
         yaxis_title="กำลังไฟฟ้า (kW)",
@@ -282,9 +282,9 @@ with tab1:
     )
     st.plotly_chart(fig_kw_each, width='stretch')
 
-    st.subheader("พลังงานไฟฟ้า (kWh) ราย 15 นาที")
+    st.subheader("🔋 กราฟพลังงานไฟฟ้า (kWh) ราย 15 นาที")
     fig_kwh_each = go.Figure()
-    fig_kwh_each.add_trace(go.Bar(x=df_display['Clock'], y=df_display['kWh_15min'], marker_color="#2a9d8f", name="kWh"))
+    fig_kwh_each.add_trace(go.Bar(x=df_display['Clock'], y=df_display['kWh_15min'], marker_color="#2a9d8f", name="พลังงานไฟฟ้า (kWh)"))
     fig_kwh_each.update_layout(
         xaxis_title="วัน-เวลา (Timestamp)",
         yaxis_title="พลังงานไฟฟ้า (kWh)",
@@ -304,7 +304,7 @@ with tab1:
         x=df_daily_kwh['Date'], 
         y=df_daily_kwh['kWh_15min'], 
         marker_color="#e76f51", 
-        name="Total kWh/Day",
+        name="พลังงานไฟฟ้ารวมรายวัน (kWh)",
         text=df_daily_kwh['kWh_15min'].map('{:,.1f}'.format), 
         textposition='outside', 
         textfont=dict(size=14, color="#1d3557", family="Arial") 
