@@ -213,7 +213,10 @@ def parse_text_lines(lines, delimiter=','):
                     best_idx = cand_idx
             kw_idx = best_idx
             
-    if clock_idx == -1 or kw_idx == -1:
+    if clock_idx == -1 or kw_idx == -1 or clock_idx == kw_idx:
+        return None
+        
+    if date_idx != -1 and (date_idx == clock_idx or date_idx == kw_idx):
         return None
         
     # 3. สกัดข้อมูลทีละบรรทัด
@@ -406,7 +409,10 @@ def parse_excel_df(df_raw):
                     best_col = cand
             kw_col = best_col
         
-    if not clock_col or not kw_col:
+    if not clock_col or not kw_col or clock_col == kw_col:
+        return None
+        
+    if date_col and (date_col == clock_col or date_col == kw_col):
         return None
         
     invalid_pattern = r'^(?:total.*|p|op|h|kwh|nan)$'
