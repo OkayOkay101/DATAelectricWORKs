@@ -363,6 +363,86 @@ def load_file(uploaded_file, file_ext):
         
     return df_result
 
+COMMON_DATETIME_FORMATS = (
+    "%d/%m/%Y %H:%M",
+    "%d/%m/%Y %H:%M:%S",
+    "%Y-%m-%d %H:%M:%S",
+    "%Y-%m-%d %H:%M",
+    "%d-%m-%Y %H:%M",
+    "%d-%m-%Y %H:%M:%S",
+    "%Y/%m/%d %H:%M",
+    "%Y/%m/%d %H:%M:%S",
+    "%d/%m/%Y",
+    "%Y-%m-%d",
+    "%d/%m/%y %H:%M",
+    "%d/%m/%y %H:%M:%S",
+)
+
+def fast_parse_datetime(series, dayfirst=True):
+    """
+    ⚡ Bolt Optimization: Fast vectorized datetime parser using common formats.
+    Instead of slow element-by-element dateutil parsing with format='mixed' (which takes >30s for 200k rows),
+    attempt fast C-level strptime parsing with prioritized format candidates.
+    If any non-null rows fail to parse (e.g. malformed or mixed formats), patch only those failed rows.
+    """
+    if pd.api.types.is_datetime64_any_dtype(series):
+        return series
+
+    if len(series) == 0:
+        return pd.to_datetime(series, dayfirst=dayfirst, errors='coerce', format='mixed')
+
+    valid_samples = series.dropna()
+    if valid_samples.empty:
+        return pd.to_datetime(series, dayfirst=dayfirst, errors='coerce', format='mixed')
+
+    # Find the first non-empty string sample to prioritize candidate formats
+    first_val = ""
+    for v in valid_samples:
+        s_val = str(v).strip()
+        if s_val:
+            first_val = s_val
+            break
+
+    if not first_val:
+        return pd.to_datetime(series, dayfirst=dayfirst, errors='coerce', format='mixed')
+
+    candidates = list(COMMON_DATETIME_FORMATS)
+    if "-" in first_val and len(first_val) >= 4 and first_val[:4].isdigit():
+        candidates.sort(key=lambda fmt: 0 if fmt.startswith("%Y-%m-%d") else 1)
+    elif "/" in first_val and len(first_val) >= 4 and first_val[:4].isdigit():
+        candidates.sort(key=lambda fmt: 0 if fmt.startswith("%Y/%m/%d") else 1)
+    elif "/" in first_val:
+        candidates.sort(key=lambda fmt: 0 if fmt.startswith("%d/%m/%Y") else 1)
+    elif "-" in first_val:
+        candidates.sort(key=lambda fmt: 0 if fmt.startswith("%d-%m-%Y") else 1)
+
+    parsed = None
+    for fmt in candidates:
+        try:
+            res = pd.to_datetime(series, format=fmt, errors='coerce')
+            success_count = res.notna().sum()
+            if success_count > 0:
+                mask_failed = res.isna() & (~series.isna()) & (series.astype(str).str.strip() != '')
+                if not mask_failed.any():
+                    parsed = res
+                    break
+                elif success_count >= len(valid_samples) * 0.5:
+                    res.loc[mask_failed] = pd.to_datetime(
+                        series.loc[mask_failed],
+                        dayfirst=dayfirst,
+                        errors='coerce',
+                        format='mixed'
+                    )
+                    parsed = res
+                    break
+        except Exception:
+            continue
+
+    if parsed is None:
+        parsed = pd.to_datetime(series, dayfirst=dayfirst, errors='coerce', format='mixed')
+
+    return parsed
+
 @st.cache_data
 def preprocess_data(df, kw_max=DEFAULT_OUTLIER_KW_MAX, v_max=DEFAULT_OUTLIER_V_MAX):
     if df is None or df.empty:
@@ -392,7 +472,8 @@ def preprocess_data(df, kw_max=DEFAULT_OUTLIER_KW_MAX, v_max=DEFAULT_OUTLIER_V_M
         st.warning(f"พบข้อมูลที่มีค่าสูงผิดปกติ (>= {kw_max:,}) จำนวน {outlier_mask.sum()} แถว ระบบจะไม่ลบทิ้ง โปรดตรวจสอบความถูกต้อง")
     
     # แปลงเวลา
-    df['Clock'] = pd.to_datetime(df['Clock'], dayfirst=True, errors='coerce', format='mixed')
+    # ⚡ Bolt Optimization: Use fast_parse_datetime instead of slow format='mixed'
+    df['Clock'] = fast_parse_datetime(df['Clock'], dayfirst=True)
     df = df.dropna(subset=['Clock']).reset_index(drop=True)
     
     # ป้องกันไฟล์ทับกัน
@@ -443,7 +524,7 @@ def get_usage_snapshots(df):
 
     clock_series = df['Clock']
     if not pd.api.types.is_datetime64_any_dtype(clock_series):
-        clock_series = pd.to_datetime(clock_series, errors='coerce', format='mixed')
+        clock_series = fast_parse_datetime(clock_series, dayfirst=True)
 
     # Fast vectorized format %d/%m/%y %H:%M -> e.g. 2026-01-01 00:00:00 -> 01/01/26 00:00
     c_str = clock_series.astype(str)

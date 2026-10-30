@@ -164,5 +164,42 @@ class TestDataHandler(unittest.TestCase):
         snapshots = get_usage_snapshots(df)
         self.assertEqual(len(snapshots), 0)
 
+    def test_fast_parse_datetime_parity(self):
+        from data_handler import fast_parse_datetime
+        # Test that fast_parse_datetime produces exact parity with pd.to_datetime(..., format='mixed')
+        dates = pd.date_range("2024-01-01", periods=100, freq="15min")
+        test_series = [
+            pd.Series(dates.strftime("%d/%m/%Y %H:%M")),
+            pd.Series(dates.strftime("%Y-%m-%d %H:%M:%S")),
+            pd.Series(list(dates[:50].strftime("%d/%m/%Y %H:%M")) + [None, "invalid_date", ""] + list(dates[50:97].strftime("%d/%m/%Y %H:%M"))),
+            pd.Series(list(dates[:80].strftime("%d/%m/%Y %H:%M")) + list(dates[80:100].strftime("%Y-%m-%d %H:%M:%S"))),
+        ]
+        for s in test_series:
+            expected = pd.to_datetime(s, dayfirst=True, errors='coerce', format='mixed')
+            actual = fast_parse_datetime(s, dayfirst=True)
+            pd.testing.assert_series_equal(actual, expected)
+
+        # Test preprocess_data parity on a realistic DataFrame
+        df_input = pd.DataFrame({
+            'Clock': list(dates[:50].strftime("%d/%m/%Y %H:%M")) + ['invalid'] + list(dates[51:100].strftime("%d/%m/%Y %H:%M")),
+            'kW_Import': ['100.5'] * 100,
+            'Voltage': ['220.0'] * 100
+        })
+        # Baseline using format='mixed'
+        df_baseline = df_input.copy()
+        df_baseline['kW_Import'] = pd.to_numeric(df_baseline['kW_Import'], errors='coerce').fillna(0)
+        df_baseline['Voltage'] = pd.to_numeric(df_baseline['Voltage'], errors='coerce').fillna(220.0)
+        df_baseline['Clock'] = pd.to_datetime(df_baseline['Clock'], dayfirst=True, errors='coerce', format='mixed')
+        df_baseline = df_baseline.dropna(subset=['Clock']).reset_index(drop=True)
+        df_baseline = df_baseline.sort_values(['Clock', 'kW_Import'], ascending=[True, False]).drop_duplicates(subset=['Clock'], keep='first').reset_index(drop=True)
+        df_baseline['Date'] = df_baseline['Clock'].dt.normalize()
+        clock_str = df_baseline['Clock'].astype(str)
+        df_baseline['Month'] = clock_str.str.slice(0, 7)
+        df_baseline['Time_Str'] = clock_str.str.slice(11, 16).replace('', '00:00')
+        df_baseline['kWh_15min'] = df_baseline['kW_Import'] / 4.0
+
+        df_optimized = preprocess_data(df_input)
+        pd.testing.assert_frame_equal(df_optimized, df_baseline)
+
 if __name__ == '__main__':
     unittest.main()

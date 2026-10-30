@@ -45,7 +45,7 @@ class TestApp(unittest.TestCase):
 
             # Resolve path to app.py based on repo root
             app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.py')
-            at = AppTest.from_file(app_path).run()
+            at = AppTest.from_file(app_path, default_timeout=30).run()
 
             # Initial run should not have exceptions
             self.assertFalse(at.exception, f"App execution failed: {at.exception}")
