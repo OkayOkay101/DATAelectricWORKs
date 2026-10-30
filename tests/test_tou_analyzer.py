@@ -178,6 +178,68 @@ class TouFunctionalTests(unittest.TestCase):
         # 3. Non-mutation check
         self.assertNotIn('Period_Detail', df_in.columns)
 
+    def test_string_clock_series_parsed_and_classified(self):
+        """String/object Clock column must be parsed without AttributeError and classified correctly."""
+        df = pd.DataFrame({
+            'Clock': ['2026-10-19 10:00:00', '2026-10-19 23:00:00'],
+            'kW_Import': [10.0, 10.0],
+            'kWh_15min': [2.5, 2.5]
+        })
+        res = apply_tou_and_anomaly(df, 2.0, time(9), time(22), 5.0, 2.0)
+        self.assertEqual(res['Period_Detail'].tolist(), ['On-Peak', 'Off-Peak'])
+        self.assertEqual(res['Rate_THB'].tolist(), [5.0, 2.0])
+
+    def test_non_nano_datetime_resolution_support(self):
+        """Second-resolution datetimes (datetime64[s]) must scale to nanoseconds rather than evaluating as 1970-01-01."""
+        df = pd.DataFrame({
+            'Clock': pd.Series([
+                pd.Timestamp('2026-10-19 10:00:00'),
+                pd.Timestamp('2026-10-19 23:00:00')
+            ]).astype('datetime64[s]'),
+            'kW_Import': [10.0, 10.0],
+            'kWh_15min': [2.5, 2.5]
+        })
+        res = apply_tou_and_anomaly(df, 2.0, time(9), time(22), 5.0, 2.0)
+        self.assertEqual(res['Period_Detail'].tolist(), ['On-Peak', 'Off-Peak'])
+        self.assertFalse(res['Is_Weekend'].iloc[0])
+
+    def test_timezone_aware_clock_evaluates_local_wall_clock_time(self):
+        """Timezone-aware timestamps (e.g. UTC+7 Asia/Bangkok) must evaluate peak hours in local wall-clock time, not UTC."""
+        df = pd.DataFrame({
+            'Clock': pd.Series([
+                pd.Timestamp('2026-10-19 10:00:00', tz='Asia/Bangkok'),
+                pd.Timestamp('2026-10-19 23:00:00', tz='Asia/Bangkok')
+            ]),
+            'kW_Import': [10.0, 10.0],
+            'kWh_15min': [2.5, 2.5]
+        })
+        res = apply_tou_and_anomaly(df, 2.0, time(9), time(22), 5.0, 2.0)
+        self.assertEqual(res['Period_Detail'].tolist(), ['On-Peak', 'Off-Peak'])
+        self.assertFalse(res['Is_Weekend'].iloc[0])
+
+    def test_holiday_with_time_component_matches_full_day(self):
+        """Holiday list items containing non-zero time components must normalize to match entire calendar day."""
+        df = pd.DataFrame({
+            'Clock': [pd.Timestamp('2026-10-19 10:00:00')],
+            'kW_Import': [10.0],
+            'kWh_15min': [2.5]
+        })
+        res = apply_tou_and_anomaly(df, 2.0, time(9), time(22), 5.0, 2.0, holiday_list=['2026-10-19 08:30:00'])
+        self.assertTrue(res['Is_Holiday'].iloc[0])
+        self.assertEqual(res['Period_Detail'].iloc[0], 'Holiday')
+        self.assertEqual(res['Rate_THB'].iloc[0], 2.0)
+
+    def test_missing_kwh_15min_computed_from_kw_import(self):
+        """When kWh_15min column is missing, it should be derived from kW_Import / 4 without KeyError."""
+        df = pd.DataFrame({
+            'Clock': [pd.Timestamp('2026-10-19 10:00:00')],
+            'kW_Import': [20.0]
+        })
+        res = apply_tou_and_anomaly(df, 2.0, time(9), time(22), 5.0, 2.0)
+        self.assertIn('kWh_15min', res.columns)
+        self.assertEqual(res['kWh_15min'].iloc[0], 5.0)
+        self.assertEqual(res['Cost_THB'].iloc[0], 25.0)
+
 
 if __name__ == '__main__':
     unittest.main()
