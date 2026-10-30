@@ -151,6 +151,25 @@ class TestApp(unittest.TestCase):
             self.assertEqual(len(tab2_dl_buttons), 1, "Expected Tab 2 daily download button")
             self.assertTrue(tab2_dl_buttons[0].help and "CSV" in tab2_dl_buttons[0].help, "Expected Tab 2 download button help tooltip")
 
+            # Verify Tab 2 (Daily Insights) subplots chart has full Thai axis titles with units and Thai trace names
+            self.assertGreaterEqual(len(plotly_charts), 5, "Expected at least 5 Plotly charts rendered")
+            fig_15min_spec = json.loads(plotly_charts[4].proto.spec)
+            fig_15min_layout = fig_15min_spec.get('layout', {})
+            self.assertEqual(fig_15min_layout.get('yaxis', {}).get('title', {}).get('text'), "กำลังไฟฟ้า (kW)")
+            self.assertEqual(fig_15min_layout.get('yaxis2', {}).get('title', {}).get('text'), "พลังงานไฟฟ้า (kWh)")
+            self.assertEqual(fig_15min_layout.get('yaxis3', {}).get('title', {}).get('text'), "แรงดันไฟฟ้า (V)")
+            self.assertEqual(fig_15min_layout.get('yaxis4', {}).get('title', {}).get('text'), "ค่าไฟฟ้า (บาท)")
+
+            fig_15min_traces = [t.get('name') for t in fig_15min_spec.get('data', [])]
+            self.assertIn("กำลังไฟฟ้า (kW)", fig_15min_traces)
+            self.assertIn("พลังงานไฟฟ้า (kWh)", fig_15min_traces)
+            self.assertIn("แรงดันไฟฟ้า (V)", fig_15min_traces)
+            self.assertIn("ค่าไฟฟ้า (บาท)", fig_15min_traces)
+
+            # Verify Tab 2 has period color legend info banner
+            tab2_legends = [inf.value for inf in at.info if "สีส้ม = On-Peak" in inf.value]
+            self.assertGreaterEqual(len(tab2_legends), 2, "Expected period color legend in both Tab 1 and Tab 2")
+
             # Verify Tab 3 (Shift Graph) comparison metrics
             self.assertIn("🔥 โหลดสูงสุดเปรียบเทียบ (Peak)", metrics, "Shift graph peak demand metric missing")
             self.assertIn("⚡ พลังงานช่วง On-Peak", metrics, "Shift graph on-peak energy metric missing")
@@ -198,8 +217,25 @@ class TestApp(unittest.TestCase):
             # Verify Tab 4 dedicated download button
             download_labels = [db.label for db in at.download_button]
             self.assertIn("📥 ดาวน์โหลดผลการจำลองค่าไฟ (.csv)", download_labels)
+
+            # Test Tab 2 anomaly markers by updating file_uploader with anomaly data in the same session
+            clocks = pd.date_range('2026-01-01 08:00:00', periods=20, freq='15min')
+            anomaly_df = pd.DataFrame({
+                'Clock': clocks.strftime('%Y-%m-%d %H:%M:%S'),
+                'kW_Import': [50.0] * 19 + [500.0],
+                'Voltage': [220.0] * 20
+            })
+            anom_buf = io.BytesIO()
+            anomaly_df.to_csv(anom_buf, index=False)
+            at.file_uploader[0].set_value([("anomaly_data.csv", anom_buf.getvalue(), "text/csv")]).run()
+
+            plotly_charts_anom = at.get('plotly_chart')
+            fig_15min_anom_spec = json.loads(plotly_charts_anom[4].proto.spec)
+            anom_trace_names = [t.get('name') for t in fig_15min_anom_spec.get('data', [])]
+            self.assertIn("สูงกว่าเกณฑ์", anom_trace_names, "Expected 'สูงกว่าเกณฑ์' anomaly trace on daily chart")
         finally:
             if mock_st is not None:
                 sys.modules['streamlit'] = mock_st
+
 
 

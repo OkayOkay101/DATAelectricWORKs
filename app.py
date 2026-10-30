@@ -346,24 +346,39 @@ with tab2:
         
         color_map = {'Holiday': '#ffd166', 'On-Peak': '#e76f51', 'Off-Peak': '#2a9d8f'}
         day_colors = day_df['Period_Detail'].map(color_map).fillna('#2a9d8f')
-        if is_bar: fig_15min.add_trace(go.Bar(x=day_df['Clock'], y=day_df['kW_Import'], marker_color=day_colors, name="kW"), row=1, col=1)
-        else: fig_15min.add_trace(go.Scatter(x=day_df['Clock'], y=day_df['kW_Import'], mode='lines', fill='tozeroy', line=dict(color="#f4a261", width=2), name="kW"), row=1, col=1)
+        if is_bar:
+            fig_15min.add_trace(go.Bar(x=day_df['Clock'], y=day_df['kW_Import'], marker_color=day_colors, name="กำลังไฟฟ้า (kW)"), row=1, col=1)
+        else:
+            fig_15min.add_trace(go.Scatter(x=day_df['Clock'], y=day_df['kW_Import'], mode='lines', fill='tozeroy', line=dict(color="#f4a261", width=2), name="กำลังไฟฟ้า (kW)"), row=1, col=1)
+
+        day_anomalies = day_df[day_df['Anomaly_Type'] != 'ปกติ']
+        if not day_anomalies.empty:
+            high_day = day_anomalies[day_anomalies['Anomaly_Type'] == 'สูงกว่าเกณฑ์ (High)']
+            if not high_day.empty:
+                fig_15min.add_trace(go.Scatter(x=high_day['Clock'], y=high_day['kW_Import'], mode='markers', name='สูงกว่าเกณฑ์', marker=dict(color='red', size=8)), row=1, col=1)
+            low_day = day_anomalies[day_anomalies['Anomaly_Type'] == 'ไฟตก (Low)']
+            if not low_day.empty:
+                fig_15min.add_trace(go.Scatter(x=low_day['Clock'], y=low_day['kW_Import'], mode='markers', name='ไฟตก', marker=dict(color='blue', size=8)), row=1, col=1)
             
-        fig_15min.add_trace(go.Bar(x=day_df['Clock'], y=day_df['kWh_15min'], marker_color="#2a9d8f", name="kWh"), row=2, col=1)
+        fig_15min.add_trace(go.Bar(x=day_df['Clock'], y=day_df['kWh_15min'], marker_color="#2a9d8f", name="พลังงานไฟฟ้า (kWh)"), row=2, col=1)
         
-        fig_15min.add_trace(go.Bar(x=day_df['Clock'], y=day_df['Voltage'], marker_color="#e63946", name="Volt"), row=3, col=1)
+        fig_15min.add_trace(go.Bar(x=day_df['Clock'], y=day_df['Voltage'], marker_color="#e63946", name="แรงดันไฟฟ้า (V)"), row=3, col=1)
         fig_15min.update_yaxes(range=[day_df['Voltage'].min() - 5, day_df['Voltage'].max() + 5], row=3, col=1)
         
-        fig_15min.add_trace(go.Bar(x=day_df['Clock'], y=day_df['Cost_THB'], marker_color="#8338ec", name="THB"), row=4, col=1)
+        fig_15min.add_trace(go.Bar(x=day_df['Clock'], y=day_df['Cost_THB'], marker_color="#8338ec", name="ค่าไฟฟ้า (บาท)"), row=4, col=1)
         
-        fig_15min.update_yaxes(title_text="kW", row=1, col=1)
-        fig_15min.update_yaxes(title_text="kWh", row=2, col=1)
-        fig_15min.update_yaxes(title_text="Volt", row=3, col=1)
-        fig_15min.update_yaxes(title_text="บาท", row=4, col=1)
+        fig_15min.update_yaxes(title_text="กำลังไฟฟ้า (kW)", row=1, col=1)
+        fig_15min.update_yaxes(title_text="พลังงานไฟฟ้า (kWh)", row=2, col=1)
+        fig_15min.update_yaxes(title_text="แรงดันไฟฟ้า (V)", row=3, col=1)
+        fig_15min.update_yaxes(title_text="ค่าไฟฟ้า (บาท)", row=4, col=1)
         fig_15min.update_xaxes(title_text="วัน-เวลา (Timestamp)", row=4, col=1)
 
         fig_15min.update_layout(height=900, template="plotly_white", hovermode="x unified", showlegend=False, margin=dict(l=20, r=20, t=40, b=20))
         st.plotly_chart(fig_15min, width='stretch')
+        if rate_type == "TOU (Time of Use)":
+            st.info("💡 สีส้ม = On-Peak | สีเขียว = Off-Peak (กลางคืน/เสาร์-อาทิตย์) | สีเหลือง = Holiday (วันหยุดราชการ) | 🔴 จุดสีแดง = โหลดสูงผิดปกติ | 🔵 จุดสีน้ำเงิน = ไฟตก")
+        else:
+            st.info("💡 สีส้ม = เวลากลางวัน (09:00-22:00) | สีเขียว/เหลือง = เวลากลางคืนและวันหยุด | 🔴 จุดสีแดง = โหลดสูงผิดปกติ | 🔵 จุดสีน้ำเงิน = ไฟตก")
 
         st.markdown(f"#### 📋 ตารางข้อมูลดิบประจำวันที่ {sel_date}")
         day_raw_table = day_df[['Clock', 'kW_Import', 'kWh_15min', 'Voltage', 'Period_Detail', 'Rate_THB', 'Cost_THB', 'Anomaly_Type']].copy()
