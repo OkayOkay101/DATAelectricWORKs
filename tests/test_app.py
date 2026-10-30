@@ -73,6 +73,15 @@ class TestApp(unittest.TestCase):
             # Check initial markdown instructions
             self.assertTrue(len(at.markdown) > 0, "No markdown instructions found")
 
+            # Verify initial welcome screen guidance and sample template download button
+            template_buttons = [db for db in at.download_button if "ดาวน์โหลดไฟล์ตัวอย่างแม่แบบ" in db.label]
+            self.assertEqual(len(template_buttons), 1, "Expected sample template download button on welcome screen")
+            self.assertTrue(template_buttons[0].help and "แม่แบบ" in template_buttons[0].help)
+            self.assertTrue(len(at.dataframe) > 0, "Expected supported format sample table on welcome screen")
+            sample_df = at.dataframe[0].value
+            self.assertIn("ชื่อคอลัมน์ที่รองรับ", sample_df.columns)
+            self.assertIn("ความหมายและหน่วย", sample_df.columns)
+
             # Simulate file upload to test UI interactions (e.g. download button)
             # Create a simple mock CSV (100 kW and 110 kW at 15-min intervals)
             df = pd.DataFrame({
@@ -236,6 +245,8 @@ class TestApp(unittest.TestCase):
         finally:
             if mock_st is not None:
                 sys.modules['streamlit'] = mock_st
+
+
 
 
 
