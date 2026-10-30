@@ -103,6 +103,23 @@ class TestApp(unittest.TestCase):
             self.assertEqual(metrics["📈 โหลดไฟฟ้าเฉลี่ย"], "105.00 kW")
             self.assertTrue("138.44" in metrics["💰 ค่าไฟฟ้าประเมินรวม"], f"Expected cost in metric, got: {metrics['💰 ค่าไฟฟ้าประเมินรวม']}")
 
+            # Verify Tab 1 (Overview) daily energy summary download button exists with help tooltip
+            tab1_dl_buttons = [db for db in at.download_button if "ดาวน์โหลดสรุปพลังงานรายวัน" in db.label]
+            self.assertEqual(len(tab1_dl_buttons), 1, "Expected Tab 1 daily summary download button")
+            self.assertTrue(tab1_dl_buttons[0].help and "CSV" in tab1_dl_buttons[0].help, "Expected Tab 1 download button help tooltip")
+
+            # Verify Tab 1 (Overview) charts have axis labels with units
+            plotly_charts = at.get('plotly_chart')
+            self.assertGreaterEqual(len(plotly_charts), 4, "Expected at least 4 Plotly charts in overview")
+            import json
+            fig_all_layout = json.loads(plotly_charts[0].proto.spec).get('layout', {})
+            self.assertEqual(fig_all_layout.get('yaxis', {}).get('title', {}).get('text'), "กำลังไฟฟ้า (kW)")
+            self.assertEqual(fig_all_layout.get('xaxis', {}).get('title', {}).get('text'), "วัน-เวลา (Timestamp)")
+
+            fig_daily_layout = json.loads(plotly_charts[3].proto.spec).get('layout', {})
+            self.assertEqual(fig_daily_layout.get('yaxis', {}).get('title', {}).get('text'), "พลังงานไฟฟ้ารวม (kWh)")
+            self.assertEqual(fig_daily_layout.get('xaxis', {}).get('title', {}).get('text'), "วันที่ (Date)")
+
             # Verify Tab 2 (Daily Insights) raw data table has Thai headers with units and hidden index
             self.assertGreater(len(at.dataframe), 2, "Expected at least 3 dataframes rendered")
             raw_table = at.dataframe[2]
