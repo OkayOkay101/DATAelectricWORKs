@@ -683,7 +683,7 @@ with tab4:
 
         with st.container(border=True):
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("พลังงานที่ใช้ทั้งหมด", f"{df_summary['kWh_15min'].sum():,.1f} kWh")
+            c1.metric("พลังงานที่ใช้ทั้งหมด", f"{df_summary['kWh_15min'].sum():,.2f} kWh")
             c2.metric(
                 "🔥 โหลดสูงสุด (Peak)",
                 f"{peak_kw_summary:,.2f} kW",
@@ -697,16 +697,23 @@ with tab4:
             cost_summary = df_summary.groupby('Period_Detail')[['kWh_15min', 'Cost_THB']].sum().reset_index()
             summary_dict = cost_summary.set_index('Period_Detail').to_dict('index')
             
+            tot_summary_kwh = df_summary['kWh_15min'].sum()
             if rate_type == "TOU (Time of Use)":
                 cc1, cc2, cc3 = st.columns(3)
                 p_data = summary_dict.get('On-Peak', {'kWh_15min': 0.0, 'Cost_THB': 0.0})
-                cc1.error(f"**🔴 On-Peak** ({p_rate} บ.)\n\nพลังงาน: {p_data['kWh_15min']:,.2f} kWh\n\n**เป็นเงิน: ฿ {p_data['Cost_THB']:,.2f}**")
+                p_kwh_pct = (p_data['kWh_15min'] / tot_summary_kwh * 100) if tot_summary_kwh > 0 else 0.0
+                p_cost_pct = (p_data['Cost_THB'] / orig_cost * 100) if orig_cost > 0 else 0.0
+                cc1.error(f"**🔴 On-Peak** ({p_rate} บาท/หน่วย)\n\nพลังงาน: {p_data['kWh_15min']:,.2f} kWh ({p_kwh_pct:.1f}%)\n\n**เป็นเงิน: ฿ {p_data['Cost_THB']:,.2f} ({p_cost_pct:.1f}%)**")
                 
                 op_data = summary_dict.get('Off-Peak', {'kWh_15min': 0.0, 'Cost_THB': 0.0})
-                cc2.success(f"**🟢 Off-Peak** ({op_rate} บ.)\n\nพลังงาน: {op_data['kWh_15min']:,.2f} kWh\n\n**เป็นเงิน: ฿ {op_data['Cost_THB']:,.2f}**")
+                op_kwh_pct = (op_data['kWh_15min'] / tot_summary_kwh * 100) if tot_summary_kwh > 0 else 0.0
+                op_cost_pct = (op_data['Cost_THB'] / orig_cost * 100) if orig_cost > 0 else 0.0
+                cc2.success(f"**🟢 Off-Peak** ({op_rate} บาท/หน่วย)\n\nพลังงาน: {op_data['kWh_15min']:,.2f} kWh ({op_kwh_pct:.1f}%)\n\n**เป็นเงิน: ฿ {op_data['Cost_THB']:,.2f} ({op_cost_pct:.1f}%)**")
                 
                 h_data = summary_dict.get('Holiday', {'kWh_15min': 0.0, 'Cost_THB': 0.0})
-                cc3.warning(f"**🟡 Holiday** ({op_rate} บ.)\n\nพลังงาน: {h_data['kWh_15min']:,.2f} kWh\n\n**เป็นเงิน: ฿ {h_data['Cost_THB']:,.2f}**")
+                h_kwh_pct = (h_data['kWh_15min'] / tot_summary_kwh * 100) if tot_summary_kwh > 0 else 0.0
+                h_cost_pct = (h_data['Cost_THB'] / orig_cost * 100) if orig_cost > 0 else 0.0
+                cc3.warning(f"**🟡 Holiday** ({op_rate} บาท/หน่วย)\n\nพลังงาน: {h_data['kWh_15min']:,.2f} kWh ({h_kwh_pct:.1f}%)\n\n**เป็นเงิน: ฿ {h_data['Cost_THB']:,.2f} ({h_cost_pct:.1f}%)**")
             else:
                 total_kwh = df_summary['kWh_15min'].sum()
                 total_cost = df_summary['Cost_THB'].sum()
@@ -729,7 +736,7 @@ with tab4:
                 st.markdown(f"#### 📊 สถานะคาดการณ์ (หลังเลื่อน {shift_mins_sim} นาที)")
 
                 c1_sim, c2_sim, c3_sim, c4_sim = st.columns(4)
-                c1_sim.metric("พลังงานที่ใช้ทั้งหมด", f"{df_sim['kWh_15min'].sum():,.1f} kWh")
+                c1_sim.metric("พลังงานที่ใช้ทั้งหมด", f"{df_sim['kWh_15min'].sum():,.2f} kWh")
                 c2_sim.metric(
                     "🔥 โหลดสูงสุด (Peak)",
                     f"{new_peak_kw:,.2f} kW",
@@ -756,16 +763,23 @@ with tab4:
                 sim_cost_summary = df_sim.groupby('Period_Detail')[['kWh_15min', 'Cost_THB']].sum().reset_index()
                 sim_dict = sim_cost_summary.set_index('Period_Detail').to_dict('index')
 
+                tot_sim_kwh = df_sim['kWh_15min'].sum()
                 if rate_type == "TOU (Time of Use)":
                     sc1, sc2, sc3 = st.columns(3)
                     p_data_sim = sim_dict.get('On-Peak', {'kWh_15min': 0.0, 'Cost_THB': 0.0})
-                    sc1.error(f"**🔴 On-Peak** ({p_rate} บ.)\n\nพลังงาน: {p_data_sim['kWh_15min']:,.2f} kWh\n\n**เป็นเงิน: ฿ {p_data_sim['Cost_THB']:,.2f}**")
+                    p_sim_kwh_pct = (p_data_sim['kWh_15min'] / tot_sim_kwh * 100) if tot_sim_kwh > 0 else 0.0
+                    p_sim_cost_pct = (p_data_sim['Cost_THB'] / new_cost * 100) if new_cost > 0 else 0.0
+                    sc1.error(f"**🔴 On-Peak** ({p_rate} บาท/หน่วย)\n\nพลังงาน: {p_data_sim['kWh_15min']:,.2f} kWh ({p_sim_kwh_pct:.1f}%)\n\n**เป็นเงิน: ฿ {p_data_sim['Cost_THB']:,.2f} ({p_sim_cost_pct:.1f}%)**")
 
                     op_data_sim = sim_dict.get('Off-Peak', {'kWh_15min': 0.0, 'Cost_THB': 0.0})
-                    sc2.success(f"**🟢 Off-Peak** ({op_rate} บ.)\n\nพลังงาน: {op_data_sim['kWh_15min']:,.2f} kWh\n\n**เป็นเงิน: ฿ {op_data_sim['Cost_THB']:,.2f}**")
+                    op_sim_kwh_pct = (op_data_sim['kWh_15min'] / tot_sim_kwh * 100) if tot_sim_kwh > 0 else 0.0
+                    op_sim_cost_pct = (op_data_sim['Cost_THB'] / new_cost * 100) if new_cost > 0 else 0.0
+                    sc2.success(f"**🟢 Off-Peak** ({op_rate} บาท/หน่วย)\n\nพลังงาน: {op_data_sim['kWh_15min']:,.2f} kWh ({op_sim_kwh_pct:.1f}%)\n\n**เป็นเงิน: ฿ {op_data_sim['Cost_THB']:,.2f} ({op_sim_cost_pct:.1f}%)**")
 
                     h_data_sim = sim_dict.get('Holiday', {'kWh_15min': 0.0, 'Cost_THB': 0.0})
-                    sc3.warning(f"**🟡 Holiday** ({op_rate} บ.)\n\nพลังงาน: {h_data_sim['kWh_15min']:,.2f} kWh\n\n**เป็นเงิน: ฿ {h_data_sim['Cost_THB']:,.2f}**")
+                    h_sim_kwh_pct = (h_data_sim['kWh_15min'] / tot_sim_kwh * 100) if tot_sim_kwh > 0 else 0.0
+                    h_sim_cost_pct = (h_data_sim['Cost_THB'] / new_cost * 100) if new_cost > 0 else 0.0
+                    sc3.warning(f"**🟡 Holiday** ({op_rate} บาท/หน่วย)\n\nพลังงาน: {h_data_sim['kWh_15min']:,.2f} kWh ({h_sim_kwh_pct:.1f}%)\n\n**เป็นเงิน: ฿ {h_data_sim['Cost_THB']:,.2f} ({h_sim_cost_pct:.1f}%)**")
                 else:
                     sim_total_kwh = df_sim['kWh_15min'].sum()
                     sim_total_cost = df_sim['Cost_THB'].sum()
