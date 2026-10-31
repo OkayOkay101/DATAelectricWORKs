@@ -1479,6 +1479,52 @@ class TestDataHandler(unittest.TestCase):
         actual_mixed = fast_parse_datetime(s_mixed, dayfirst=False)
         pd.testing.assert_series_equal(actual_mixed, expected_mixed)
 
+    def test_fast_parse_datetime_mixed_second_precision_preserves_seconds(self):
+        """Mixed 16-char (no seconds) and 19/23-char (seconds/fraction) rows must not be truncated."""
+        from data_handler import fast_parse_datetime
+
+        s_no_seconds_first = pd.Series([
+            '01/02/2023 00:15',
+            '01/02/2023 00:15:30',
+            '01/02/2023 00:15:30.500',
+            '01/02/2023 00:30',
+        ])
+        for dayfirst in (True, False):
+            with self.subTest(dayfirst=dayfirst, case='16-first'):
+                expected = pd.to_datetime(s_no_seconds_first, dayfirst=dayfirst, errors='coerce', format='mixed')
+                actual = fast_parse_datetime(s_no_seconds_first, dayfirst=dayfirst)
+                pd.testing.assert_series_equal(actual, expected)
+
+        s_seconds_first = pd.Series([
+            '01/02/2023 00:15:30',
+            '01/02/2023 00:15:30.500',
+            '01/02/2023 00:15',
+            '01/02/2023 00:30:45',
+        ])
+        for dayfirst in (True, False):
+            with self.subTest(dayfirst=dayfirst, case='19-first'):
+                expected = pd.to_datetime(s_seconds_first, dayfirst=dayfirst, errors='coerce', format='mixed')
+                actual = fast_parse_datetime(s_seconds_first, dayfirst=dayfirst)
+                pd.testing.assert_series_equal(actual, expected)
+
+    def test_preprocess_data_mixed_second_precision_does_not_drop_rows(self):
+        """Rows from the same minute with and without seconds must stay distinct (no silent dedup/data loss)."""
+        df_in = pd.DataFrame({
+            'Clock': ['01/02/2023 00:15', '01/02/2023 00:15:30', '01/02/2023 00:30'],
+            'kW_Import': ['100', '150', '200'],
+            'Voltage': ['220', '220', '220'],
+        })
+
+        df_out = preprocess_data(df_in)
+
+        self.assertEqual(len(df_out), 3, 'distinct timestamps must not collapse into one row')
+        self.assertEqual(
+            df_out['Clock'].tolist(),
+            [pd.Timestamp('2023-02-01 00:15:00'),
+             pd.Timestamp('2023-02-01 00:15:30'),
+             pd.Timestamp('2023-02-01 00:30:00')]
+        )
+
 
     def test_parse_excel_df_high_cardinality_clock_first_byte_gating_parity(self):
         """⚡ Bolt: high-cardinality clock columns must validate via a first-byte gate, not full-series regex."""
