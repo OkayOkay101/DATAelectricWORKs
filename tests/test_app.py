@@ -485,3 +485,71 @@ class TestApp(unittest.TestCase):
         finally:
             if mock_st is not None:
                 sys.modules['streamlit'] = mock_st
+
+    def test_tou_breakdown_displays_standard_units_and_percentages(self):
+        """กล่องสรุปพลังงานรายช่วงเวลาในแท็บ 4 ต้องใช้หน่วย 'บาท/หน่วย' มาตรฐาน และแสดงสัดส่วนร้อยละ (%) ทั้งก่อนและหลังจำลอง"""
+        import sys
+        mock_st = None
+        if 'streamlit' in sys.modules and not hasattr(sys.modules['streamlit'], '__path__'):
+            mock_st = sys.modules.pop('streamlit')
+
+        try:
+            from streamlit.testing.v1 import AppTest
+            import os
+            import io
+
+            app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.py')
+            at = AppTest.from_file(app_path, default_timeout=30).run()
+
+            # Mock data with 1 On-Peak interval (Monday 10:00) and 1 Off-Peak interval (Monday 23:00)
+            df = pd.DataFrame({
+                'Clock': [
+                    '2026-01-05 10:00:00',
+                    '2026-01-05 23:00:00',
+                ],
+                'kW_Import': [100.0, 100.0],
+                'Voltage': [220.0, 220.0],
+            })
+            buffer = io.BytesIO()
+            df.to_csv(buffer, index=False)
+            at.file_uploader[0].set_value([("tou_pct.csv", buffer.getvalue(), "text/csv")]).run()
+            self.assertFalse(at.exception, f"App execution failed: {at.exception}")
+
+            # Check Tab 4 energy metric has 2 decimal precision
+            metrics = {m.label: m.value for m in at.metric}
+            self.assertEqual(metrics["พลังงานที่ใช้ทั้งหมด"], "50.00 kWh")
+
+            # Check that On-Peak and Off-Peak cards use standard 'บาท/หน่วย' and show % breakdown
+            on_peak_cards = [e.value for e in at.error if "On-Peak" in e.value]
+            self.assertTrue(len(on_peak_cards) > 0, "Expected On-Peak breakdown card")
+            self.assertIn("บาท/หน่วย", on_peak_cards[0], "Card must use standard 'บาท/หน่วย' instead of 'บ.'")
+            self.assertNotIn(" บ.)", on_peak_cards[0], "Card must not contain casual abbreviation 'บ.)'")
+            self.assertIn("50.0%", on_peak_cards[0], "Expected energy percentage (50.0%) in On-Peak card")
+            self.assertIn("68.7%", on_peak_cards[0], "Expected cost percentage (68.7%) in On-Peak card")
+
+            off_peak_cards = [s.value for s in at.success if "Off-Peak" in s.value]
+            self.assertTrue(len(off_peak_cards) > 0, "Expected Off-Peak breakdown card")
+            self.assertIn("บาท/หน่วย", off_peak_cards[0], "Card must use standard 'บาท/หน่วย'")
+            self.assertNotIn(" บ.)", off_peak_cards[0], "Card must not contain casual abbreviation 'บ.)'")
+            self.assertIn("50.0%", off_peak_cards[0], "Expected energy percentage (50.0%) in Off-Peak card")
+            self.assertIn("31.3%", off_peak_cards[0], "Expected cost percentage (31.3%) in Off-Peak card")
+
+            # Simulate shifting time in Tab 4
+            next(ni for ni in at.number_input if "ใส่เวลาที่เลื่อน" in ni.label).set_value(60).run()
+            self.assertFalse(at.exception, f"App execution failed after simulation: {at.exception}")
+
+            # Check simulated cards also use 'บาท/หน่วย' and show %
+            sim_on_peak = [e.value for e in at.error if "On-Peak" in e.value]
+            self.assertEqual(len(sim_on_peak), 2, "Expected current and simulated On-Peak cards")
+            self.assertIn("บาท/หน่วย", sim_on_peak[1])
+            self.assertNotIn(" บ.)", sim_on_peak[1])
+            self.assertIn("%", sim_on_peak[1])
+
+            sim_off_peak = [s.value for s in at.success if "Off-Peak" in s.value]
+            self.assertEqual(len(sim_off_peak), 2, "Expected current and simulated Off-Peak cards")
+            self.assertIn("บาท/หน่วย", sim_off_peak[1])
+            self.assertNotIn(" บ.)", sim_off_peak[1])
+            self.assertIn("%", sim_off_peak[1])
+        finally:
+            if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
+                sys.modules['streamlit'] = mock_st
