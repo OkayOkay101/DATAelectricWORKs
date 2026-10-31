@@ -1480,5 +1480,69 @@ class TestDataHandler(unittest.TestCase):
         pd.testing.assert_series_equal(actual_mixed, expected_mixed)
 
 
+    def test_parse_excel_df_high_cardinality_clock_first_byte_gating_parity(self):
+        """⚡ Bolt: high-cardinality clock columns must validate via a first-byte gate, not full-series regex."""
+        import ast
+        handler_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data_handler.py'))
+        with open(handler_path, 'r', encoding='utf-8') as f:
+            tree = ast.parse(f.read())
+
+        found_byte_gate = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == 'parse_excel_df':
+                has_view = any(
+                    isinstance(child, ast.Attribute) and child.attr == 'view'
+                    for child in ast.walk(node)
+                )
+                has_s19 = any(
+                    isinstance(child, ast.Call)
+                    and isinstance(child.func, ast.Attribute)
+                    and child.func.attr == 'to_numpy'
+                    and any(
+                        kw.arg == 'dtype'
+                        and isinstance(kw.value, ast.Constant)
+                        and kw.value.value == 'S19'
+                        for kw in child.keywords
+                    )
+                    for child in ast.walk(node)
+                )
+                if has_view and has_s19:
+                    found_byte_gate = True
+        self.assertTrue(
+            found_byte_gate,
+            "parse_excel_df must use a vectorized first-byte gate for high-cardinality clock columns"
+        )
+
+        # High-cardinality clock column (every timestamp unique) mixed with footer/summary rows.
+        valid_clocks = [f"01/01/2026 {h:02d}:{m:02d}:{s:02d}" for h in range(24) for m in range(0, 60, 2) for s in (0, 30)]
+        valid_clocks = valid_clocks[:1000]
+        rows = [[c, "100.5", "220.0"] for c in valid_clocks]
+        invalid_rows = [
+            ["TOTAL 5", "1", "220"],
+            ["p", "1", "220"],
+            ["OP", "1", "220"],
+            ["h", "1", "220"],
+            ["kWh", "1", "220"],
+            ["NaN", "1", "220"],
+            ["DNV/ERR", "1", "220"],
+            ["   total 9", "1", "220"],
+            ["", "1", "220"],
+            [None, "1", "220"],
+        ]
+        # Non-ASCII text and letter-prefixed text do not match the footer regex and stay valid.
+        extra_valid = [["ปกติ", "1", "220"], ["ABC123", "1", "220"]]
+
+        raw_rows = rows + invalid_rows + extra_valid
+        df_raw = pd.DataFrame([["Clock", "kW_Import", "Voltage"]] + raw_rows)
+
+        actual = parse_excel_df(df_raw)
+        expected = pd.DataFrame({
+            'Clock': valid_clocks + ["ปกติ", "ABC123"],
+            'kW_Import': ["100.5"] * len(valid_clocks) + ["1", "1"],
+            'Voltage': ["220.0"] * len(valid_clocks) + ["220", "220"],
+        })
+        pd.testing.assert_frame_equal(actual, expected)
+
+
 if __name__ == '__main__':
     unittest.main()
