@@ -798,9 +798,12 @@ def fast_parse_datetime(series, dayfirst=True):
     if len(first_val) == 16 and (first_val[2] == '/' or first_val[2] == '-') and first_val[5] == first_val[2] and first_val[10] == ' ' and first_val[13] == ':':
         try:
             sep_char = ord(first_val[2])
-            arr = series.to_numpy(dtype='S16')
-            b = arr.view('uint8').reshape(n, 16)
-            sep_mask = (b[:, 2] == sep_char) & (b[:, 5] == sep_char) & (b[:, 10] == ord(' ')) & (b[:, 13] == ord(':'))
+            # ⚡ Use width 19 so rows with seconds (or more) are not truncated to 16 chars.
+            # b[:, 16] == 0 guarantees the original value is exactly 16 chars; longer values
+            # are left for the mixed-format fallback so their seconds are not silently dropped.
+            arr = series.to_numpy(dtype='S19')
+            b = arr.view('uint8').reshape(n, 19)
+            sep_mask = (b[:, 16] == 0) & (b[:, 2] == sep_char) & (b[:, 5] == sep_char) & (b[:, 10] == ord(' ')) & (b[:, 13] == ord(':'))
             if sep_mask.any():
                 out = np.empty((n, 16), dtype='uint8')
                 out[:, 0:4] = b[:, 6:10] # YYYY
@@ -842,9 +845,12 @@ def fast_parse_datetime(series, dayfirst=True):
     elif len(first_val) == 19 and (first_val[2] == '/' or first_val[2] == '-') and first_val[5] == first_val[2] and first_val[10] == ' ' and first_val[13] == ':' and first_val[16] == ':':
         try:
             sep_char = ord(first_val[2])
-            arr = series.to_numpy(dtype='S19')
-            b = arr.view('uint8').reshape(n, 19)
-            sep_mask = (b[:, 2] == sep_char) & (b[:, 5] == sep_char) & (b[:, 10] == ord(' ')) & (b[:, 13] == ord(':')) & (b[:, 16] == ord(':'))
+            # ⚡ Use width 20 so rows with fractional seconds/timezone are not truncated to 19 chars.
+            # b[:, 19] == 0 guarantees the original value is exactly 19 chars; longer values
+            # are left for the mixed-format fallback so their sub-second precision is preserved.
+            arr = series.to_numpy(dtype='S20')
+            b = arr.view('uint8').reshape(n, 20)
+            sep_mask = (b[:, 19] == 0) & (b[:, 2] == sep_char) & (b[:, 5] == sep_char) & (b[:, 10] == ord(' ')) & (b[:, 13] == ord(':')) & (b[:, 16] == ord(':'))
             if sep_mask.any():
                 out = np.empty((n, 19), dtype='uint8')
                 out[:, 0:4] = b[:, 6:10] # YYYY
