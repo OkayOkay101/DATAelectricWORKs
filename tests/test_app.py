@@ -370,6 +370,38 @@ class TestApp(unittest.TestCase):
             self.assertIn("01/01/2026 10:15", coverage[0])
             self.assertIn("2 แถว", coverage[0])
 
+            # UX: invalid On-Peak window must be explained in the sidebar, not silently
+            # producing a zero On-Peak cost or an unexpected overnight peak window.
+            equal_warnings = [w.value for w in at.warning if "On-Peak" in w.value and "เท่ากัน" in w.value]
+            self.assertEqual(equal_warnings, [], "Should not warn on the default On-Peak window")
+
+            def _set_peak_times(start, end):
+                next(w for w in at.time_input if "เริ่ม On-Peak" in w.label).set_value(start)
+                next(w for w in at.time_input if "สิ้นสุด On-Peak" in w.label).set_value(end)
+                at.run()
+                self.assertFalse(at.exception, f"App execution failed: {at.exception}")
+
+            _set_peak_times(datetime.time(9, 0), datetime.time(9, 0))
+            equal_warnings = [w.value for w in at.warning if "On-Peak" in w.value and "เท่ากัน" in w.value]
+            self.assertEqual(len(equal_warnings), 1, "Expected a visible warning when On-Peak start equals end")
+            self.assertIn("ไม่คิด", equal_warnings[0])
+            self.assertIn("กรุณาตั้งเวลาให้ต่างกัน", equal_warnings[0])
+
+            _set_peak_times(datetime.time(22, 0), datetime.time(9, 0))
+            equal_warnings = [w.value for w in at.warning if "On-Peak" in w.value and "เท่ากัน" in w.value]
+            self.assertEqual(equal_warnings, [], "Equal-time warning must disappear after fixing the window")
+            overnight_info = [i.value for i in at.info if "On-Peak ข้ามวัน" in i.value]
+            self.assertEqual(len(overnight_info), 1, "Expected an explanation for an overnight On-Peak window")
+            self.assertIn("22:00", overnight_info[0])
+            self.assertIn("09:00", overnight_info[0])
+
+            # Restore the default On-Peak window for the remaining checks
+            _set_peak_times(datetime.time(9, 0), datetime.time(22, 0))
+            self.assertEqual(
+                [i.value for i in at.info if "On-Peak ข้ามวัน" in i.value], [],
+                "Overnight explanation must disappear after restoring the default window"
+            )
+
             # When every file fails, the user must still see why and what to fix.
             at.file_uploader[0].set_value([("bad.csv", bad, "text/csv")]).run()
             self.assertFalse(at.exception, f"App execution failed when all uploads are invalid: {at.exception}")

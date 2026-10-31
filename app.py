@@ -62,6 +62,18 @@ with st.sidebar:
         holiday_input = st.text_area("รายการวันหยุด:", value=default_holidays, height=120)
         holiday_list = [x.strip() for x in holiday_input.replace('\n', ',').split(',') if x.strip()]
 
+    if rate_type == "TOU (Time of Use)":
+        if p_start == p_end:
+            st.warning(
+                "⏰ เวลาเริ่มและสิ้นสุด On-Peak เท่ากัน ระบบจะไม่คิดค่าไฟช่วง On-Peak เลย\n\n"
+                "**วิธีแก้:** กรุณาตั้งเวลาให้ต่างกัน เช่น 09:00 ถึง 22:00"
+            )
+        elif p_end < p_start:
+            st.info(
+                f"🌙 ช่วง On-Peak ข้ามวัน ({p_start:%H:%M}–{p_end:%H:%M}) "
+                f"ระบบจะคิด On-Peak ตั้งแต่ {p_start:%H:%M} ถึงเที่ยงคืน และเที่ยงคืนถึง {p_end:%H:%M}"
+            )
+
     st.divider()
     
     st.header("📊 3. ตั้งค่าการแสดงผล")
