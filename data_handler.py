@@ -290,10 +290,14 @@ def parse_text_lines(lines, delimiter=','):
         buffered_header.append(line)
         if is_header_row(line):
             header_row_idx = i
-            if '\t' in line and ',' not in line:
-                delimiter = '\t'
-            elif ';' in line and ',' not in line:
-                delimiter = ';'
+            if delimiter == ',':
+                num_tabs = line.count('\t')
+                num_semis = line.count(';')
+                num_commas = line.count(',')
+                if num_tabs > 0 and num_tabs >= num_semis and (num_tabs >= num_commas or num_commas == 0):
+                    delimiter = '\t'
+                elif num_semis > 0 and (num_semis >= num_commas or num_commas == 0):
+                    delimiter = ';'
             break
             
     if header_row_idx == -1:
