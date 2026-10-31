@@ -3,7 +3,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import unittest
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 class MockSt:
     def cache_data(self, func=None, **kwargs):
@@ -700,6 +700,34 @@ class TestDataHandler(unittest.TestCase):
         self.assertEqual(df.iloc[0]['Clock'], "01/01/2026 01:00 PM")
         self.assertEqual(df.iloc[1]['Clock'], "15-Sep-2026 09:00")
         self.assertEqual(df.iloc[2]['Clock'], "10-March-2026 09:00")
+
+    def test_parse_excel_df_skips_clock_unique_scan(self):
+        # ⚡ Bolt: high-cardinality Clock columns must not pay for a full Series.unique() probe.
+        # The first-byte validation gate must produce the same footer filtering without the scan.
+        df_raw = pd.DataFrame([
+            ["Clock", "kW_Import", "Voltage"],
+            ["01/01/2026 00:15", "100.0", "220"],
+            ["01/01/2026 00:30", "110.0", "221"],
+            ["Total Energy", "1000.0", "220"],
+            ["dnv/err", "0.0", "220"],
+        ])
+        expected = pd.DataFrame({
+            "Clock": ["01/01/2026 00:15", "01/01/2026 00:30"],
+            "kW_Import": ["100.0", "110.0"],
+            "Voltage": ["220", "221"],
+        })
+
+        original_unique = pd.Series.unique
+
+        def guarded_unique(series):
+            if isinstance(series.name, str) and series.name.lower() == "clock":
+                raise AssertionError("parse_excel_df must not scan Clock with Series.unique()")
+            return original_unique(series)
+
+        with patch.object(pd.Series, "unique", guarded_unique):
+            actual = parse_excel_df(df_raw)
+
+        pd.testing.assert_frame_equal(actual, expected)
 
     def test_parse_excel_df_none_or_empty_returns_none(self):
         self.assertIsNone(parse_excel_df(None))
