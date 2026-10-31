@@ -6,7 +6,7 @@ import streamlit as st
 import datetime
 
 # --- นำเข้า (Import) โมดูลที่เราแยกไว้ ---
-from data_handler import load_file, preprocess_data, get_usage_snapshots, sanitize_dataframe_for_csv, sanitize_filename
+from data_handler import load_file, preprocess_data, get_usage_snapshots, sanitize_dataframe_for_csv, sanitize_filename, safe_error_reason
 from tou_analyzer import apply_tou_and_anomaly
 
 @st.cache_data
@@ -172,7 +172,8 @@ with st.spinner('🔄 กำลังโหลด ประมวลผล แ�
                 st.toast(f"⚠️ ข้ามไฟล์ '{safe_filename}' (ไม่มีข้อมูลเวลา)", icon="⚠️")
         except Exception as e:
             logging.error(f"Error reading file '{safe_filename}': {e}", exc_info=True)
-            reason = str(e).strip() if isinstance(e, ValueError) else "รูปแบบไฟล์ไม่รองรับ หรือไฟล์อาจเสียหาย"
+            # แสดงเฉพาะข้อความที่เราตรวจสอบเอง; ห้ามนำ str(e) ของ exception ภายนอกขึ้น UI
+            reason = safe_error_reason(e)
             skipped_files.append((safe_filename, reason))
             st.toast(f"❌ อ่านไฟล์ '{safe_filename}' ไม่ได้", icon="❌")
 
