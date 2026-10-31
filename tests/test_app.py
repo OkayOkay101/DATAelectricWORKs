@@ -701,3 +701,39 @@ class TestApp(unittest.TestCase):
         finally:
             if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
                 sys.modules['streamlit'] = mock_st
+
+    def test_upload_with_single_date_column_loads_and_displays_tabs(self):
+        """เมื่อผู้ใช้อัปโหลดไฟล์ที่มีคอลัมน์ 'Date' คอลัมน์เดียว (มีทั้งวันและเวลา) ระบบต้องอ่านและวิเคราะห์ได้โดยไม่ข้ามไฟล์"""
+        import sys
+        mock_st = None
+        if 'streamlit' in sys.modules and not hasattr(sys.modules['streamlit'], '__path__'):
+            mock_st = sys.modules.pop('streamlit')
+
+        try:
+            from streamlit.testing.v1 import AppTest
+            import os
+            import io
+
+            app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.py')
+            at = AppTest.from_file(app_path, default_timeout=30).run()
+
+            csv_content = (
+                b"Date,kW_Import,Voltage\n"
+                b"2026-01-05 10:00:00,120.0,220.0\n"
+                b"2026-01-05 10:15:00,130.0,220.0\n"
+            )
+            at.file_uploader[0].set_value([("single_date_col.csv", csv_content, "text/csv")]).run()
+            self.assertFalse(at.exception, f"App execution failed: {at.exception}")
+
+            # Check that file was successfully analyzed without being skipped
+            success_messages = [s.value for s in at.success if "วิเคราะห์ข้อมูลสำเร็จ" in s.value]
+            self.assertEqual(len(success_messages), 1, "Expected success message confirming analysis of 1 file")
+            self.assertIn("1 ไฟล์", success_messages[0])
+
+            # Check Overview metrics
+            metrics = {m.label: m.value for m in at.metric}
+            self.assertEqual(metrics["⚡ พลังงานไฟฟ้ารวม"], "62.50 kWh")
+            self.assertEqual(metrics["🔥 ความต้องการไฟฟ้าสูงสุด (Peak)"], "130.00 kW")
+        finally:
+            if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
+                sys.modules['streamlit'] = mock_st

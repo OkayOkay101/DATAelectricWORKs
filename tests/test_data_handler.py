@@ -2080,6 +2080,91 @@ class TestDataHandlerEdgeCases(unittest.TestCase):
         self.assertEqual(len(df), 2)
         self.assertEqual(df.iloc[0]['Clock'], "2026-01-01 10:00")
 
+    def test_is_header_row_supports_date_and_thai_date_with_power(self):
+        """is_header_row must recognize header rows with Date/วันที่ and power columns without requiring Time/เวลา."""
+        from data_handler import is_header_row
+        self.assertTrue(is_header_row("Date, kW_Import, Voltage"))
+        self.assertTrue(is_header_row("Date, Demand kW, Voltage"))
+        self.assertTrue(is_header_row("Date, Active Power, Voltage"))
+        self.assertTrue(is_header_row("วันที่, กำลังไฟฟ้า (kW), แรงดัน (V)"))
+        self.assertTrue(is_header_row("วันที่, พลังงาน, แรงดัน"))
+        self.assertTrue(is_header_row("วันที่, kW, Voltage"))
+
+    def test_parse_text_lines_date_alone_as_timestamp(self):
+        """parse_text_lines must accept single 'Date' column as timestamp when no separate 'Time' column exists."""
+        lines = [
+            "Date,kW_Import,Voltage\n",
+            "2026-01-01 10:00:00,100.5,220.0\n",
+            "2026-01-01 10:15:00,110.0,220.0\n",
+        ]
+        df = parse_text_lines(lines)
+        self.assertIsNotNone(df, "parse_text_lines should not return None when timestamp is in single 'Date' column")
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df.iloc[0]['Clock'], "2026-01-01 10:00:00")
+        self.assertEqual(df.iloc[0]['kW_Import'], "100.5")
+
+    def test_parse_excel_df_date_alone_as_timestamp(self):
+        """parse_excel_df must accept single 'Date' column as timestamp when no separate 'Time' column exists."""
+        df_raw = pd.DataFrame([
+            ["Date", "kW_Import", "Voltage"],
+            ["2026-01-01 10:00:00", 100.5, 220.0],
+            ["2026-01-01 10:15:00", 110.0, 220.0],
+        ])
+        df = parse_excel_df(df_raw)
+        self.assertIsNotNone(df, "parse_excel_df should not return None when timestamp is in single 'Date' column")
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df.iloc[0]['Clock'], "2026-01-01 10:00:00")
+        self.assertEqual(df.iloc[0]['kW_Import'], 100.5)
+
+    def test_parse_text_lines_thai_date_alone_as_timestamp(self):
+        """parse_text_lines must accept single Thai 'วันที่' column as timestamp when no separate 'เวลา' exists."""
+        lines = [
+            "วันที่,กำลังไฟฟ้า (kW),แรงดัน (V)\n",
+            "2026-01-01 10:00:00,100.5,220.0\n",
+            "2026-01-01 10:15:00,110.0,220.0\n",
+        ]
+        df = parse_text_lines(lines)
+        self.assertIsNotNone(df, "parse_text_lines should not return None when timestamp is in single 'วันที่' column")
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df.iloc[0]['Clock'], "2026-01-01 10:00:00")
+        self.assertEqual(df.iloc[0]['kW_Import'], "100.5")
+
+    def test_parse_excel_df_thai_date_alone_as_timestamp(self):
+        """parse_excel_df must accept single Thai 'วันที่' column as timestamp when no separate 'เวลา' exists."""
+        df_raw = pd.DataFrame([
+            ["วันที่", "กำลังไฟฟ้า (kW)", "แรงดัน (V)"],
+            ["2026-01-01 10:00:00", 100.5, 220.0],
+            ["2026-01-01 10:15:00", 110.0, 220.0],
+        ])
+        df = parse_excel_df(df_raw)
+        self.assertIsNotNone(df, "parse_excel_df should not return None when timestamp is in single 'วันที่' column")
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df.iloc[0]['Clock'], "2026-01-01 10:00:00")
+        self.assertEqual(df.iloc[0]['kW_Import'], 100.5)
+
+    def test_load_file_csv_with_date_alone_timestamp(self):
+        """load_file and preprocess_data must succeed for CSV files where timestamp is in single 'Date' column."""
+        import io
+        from data_handler import load_file, preprocess_data
+        content = (
+            b"Date,kW_Import,Voltage\n"
+            b"2026-01-01 10:00:00,100.5,220.0\n"
+            b"2026-01-01 10:15:00,110.0,220.0\n"
+        )
+        buffer = io.BytesIO(content)
+        df = load_file(buffer, "csv")
+        self.assertIsNotNone(df)
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df.iloc[0]['Clock'], "2026-01-01 10:00:00")
+
+        preprocessed = preprocess_data(df)
+        self.assertEqual(len(preprocessed), 2)
+        self.assertEqual(preprocessed.iloc[0]['Clock'], pd.Timestamp("2026-01-01 10:00:00"))
+        self.assertEqual(preprocessed.iloc[0]['kW_Import'], 100.5)
+        self.assertEqual(preprocessed.iloc[0]['kWh_15min'], 25.125)
+        self.assertEqual(preprocessed.iloc[0]['Month'], "2026-01")
+        self.assertEqual(preprocessed.iloc[0]['Time_Str'], "10:00")
+
 
 if __name__ == '__main__':
     unittest.main()

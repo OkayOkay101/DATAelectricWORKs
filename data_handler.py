@@ -267,13 +267,13 @@ def is_header_row(row_str):
     l_lower = row_str.lower()
     return (('clock' in l_lower and 'import' in l_lower) or
            ('ch1' in l_lower and 'ch4' in l_lower) or
-           ('date' in l_lower and ('clock' in l_lower or 'time' in l_lower)) or
+           ('date' in l_lower and ('clock' in l_lower or 'time' in l_lower or 'kw' in l_lower or 'import' in l_lower or 'demand' in l_lower or 'active' in l_lower)) or
            ('pea no' in l_lower and 'clock' in l_lower) or
            ('pea no' in l_lower and ('clock' in l_lower or 'datatime' in l_lower or 'datetime' in l_lower)) or
            (('datatime' in l_lower or 'datetime' in l_lower) and ('import' in l_lower or 'kw' in l_lower)) or
            ('time' in l_lower and (('active' in l_lower and 'power' in l_lower) or 'kw' in l_lower or 'import' in l_lower)) or
            ('เวลา' in l_lower and 'พลังงาน' in l_lower) or
-           ('วันที่' in l_lower and 'เวลา' in l_lower) or
+           ('วันที่' in l_lower and ('เวลา' in l_lower or 'กำลังไฟฟ้า' in l_lower or 'พลังงาน' in l_lower or 'kw' in l_lower or 'import' in l_lower)) or
            ('เวลา' in l_lower and 'kw' in l_lower))
 
 def parse_text_lines(lines, delimiter=','):
@@ -341,6 +341,11 @@ def parse_text_lines(lines, delimiter=','):
            c_clean == 'kw'):
             kw_idx_candidates.append(i)
     
+    # หากไม่พบคอลัมน์เวลาแยกต่างหาก แต่พบคอลัมน์วันที่ (เช่น Date หรือ วันที่ เดี่ยวๆ ที่มีทั้งวันและเวลา) ให้ใช้เป็นคอลัมน์เวลาหลัก
+    if clock_idx == -1 and date_idx != -1:
+        clock_idx = date_idx
+        date_idx = -1
+
     kw_idx = -1
     buffered_data = []
     if kw_idx_candidates:
@@ -596,7 +601,12 @@ def parse_excel_df(df_raw):
            'กำลังไฟฟ้า' in c_clean or \
            c_clean == 'kw'):
             kw_candidates.append(c)
-            
+
+    # หากไม่พบคอลัมน์เวลาแยกต่างหาก แต่พบคอลัมน์วันที่ (เช่น Date หรือ วันที่ เดี่ยวๆ ที่มีทั้งวันและเวลา) ให้ใช้เป็นคอลัมน์เวลาหลัก
+    if clock_col is None and date_col is not None:
+        clock_col = date_col
+        date_col = None
+
     kw_col = None
     if kw_candidates:
         if len(kw_candidates) == 1:
