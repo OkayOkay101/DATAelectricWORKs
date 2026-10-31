@@ -237,6 +237,46 @@ class TestDataHandler(unittest.TestCase):
         self.assertIsNotNone(df)
         self.assertEqual(len(df), 1)
 
+    def test_load_file_rejects_xlsx_decompression_bomb(self):
+        import io
+        import struct
+        import zipfile
+        from unittest import mock
+        from data_handler import load_file, MAX_EXCEL_UNCOMPRESSED_BYTES
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr('xl/worksheets/sheet1.xml', '<worksheet/>')
+        payload = bytearray(buffer.getvalue())
+
+        # Forge the declared uncompressed size in both local and central headers
+        # so the archive looks like a multi-hundred-MB bomb without allocating it.
+        forged_size = MAX_EXCEL_UNCOMPRESSED_BYTES + 1
+        struct.pack_into('<I', payload, 22, forged_size)
+        central_dir = payload.find(b'PK\x01\x02')
+        self.assertNotEqual(central_dir, -1)
+        struct.pack_into('<I', payload, central_dir + 24, forged_size)
+
+        with mock.patch('pandas.read_excel') as read_excel_mock:
+            with self.assertRaises(ValueError) as ctx:
+                load_file(io.BytesIO(bytes(payload)), 'xlsx')
+            read_excel_mock.assert_not_called()
+        self.assertIn("แตกไฟล์เกินกำหนด", str(ctx.exception))
+
+    def test_validate_excel_archive_allows_small_zip_and_non_zip(self):
+        import io
+        import zipfile
+        from data_handler import validate_excel_archive
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr('xl/worksheets/sheet1.xml', '<worksheet/>')
+        buffer.seek(0)
+        validate_excel_archive(buffer)
+
+        # HTML renamed to .xlsx is handled by the existing read_html fallback.
+        validate_excel_archive(io.BytesIO(b"<html><body><table></table></body></html>"))
+
     def test_app_file_uploader_specifies_type(self):
         import ast
         app_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'app.py'))
