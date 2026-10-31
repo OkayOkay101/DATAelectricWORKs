@@ -303,6 +303,48 @@ class TestApp(unittest.TestCase):
             self.assertEqual(len(tab4_metrics), 0, "Expected Tab 4 metrics to be hidden when summary data is empty")
             sim_downloads = [db for db in at.download_button if "ดาวน์โหลดผลการจำลองค่าไฟ" in db.label]
             self.assertEqual(len(sim_downloads), 0, "Expected simulation download button to be hidden when summary data is empty")
+
+            # UX regression: mixed upload must persistently report skipped files (with
+            # reason + fix hint) and the analyzed date range, not just a transient toast.
+            summary_radios = [r for r in at.radio if "กำหนดช่วงเวลา (Custom)" in r.options]
+            summary_radios[0].set_value("ภาพรวมทั้งหมด (Total)").run()
+
+            good = (
+                "Clock,kW_Import,Voltage\n"
+                "2026-01-01 10:00:00,100,220\n"
+                "2026-01-01 10:15:00,110,220\n"
+            ).encode('utf-8')
+            bad = b"hello,world\nfoo,bar\nbaz,qux\n"
+
+            at.file_uploader[0].set_value([
+                ("good.csv", good, "text/csv"),
+                ("bad.csv", bad, "text/csv"),
+            ]).run()
+            self.assertFalse(at.exception, f"App execution failed on mixed upload: {at.exception}")
+
+            notices = [w.value for w in at.warning if "ข้ามไฟล์ที่อ่านไม่ได้" in w.value]
+            self.assertEqual(len(notices), 1, "Expected a persistent notice listing skipped files")
+            self.assertIn("bad.csv", notices[0])
+            self.assertIn("อ่านไฟล์ไม่สำเร็จ", notices[0])
+            self.assertIn("วิธีแก้", notices[0])
+
+            successes = [s.value for s in at.success if "วิเคราะห์ข้อมูลสำเร็จ" in s.value]
+            self.assertEqual(successes, ["วิเคราะห์ข้อมูลสำเร็จ 1 จาก 2 ไฟล์"])
+
+            coverage = [c.value for c in at.caption if "ข้อมูลที่อ่านได้" in c.value]
+            self.assertEqual(len(coverage), 1, "Expected analyzed date range caption")
+            self.assertIn("01/01/2026 10:00", coverage[0])
+            self.assertIn("01/01/2026 10:15", coverage[0])
+            self.assertIn("2 แถว", coverage[0])
+
+            # When every file fails, the user must still see why and what to fix.
+            at.file_uploader[0].set_value([("bad.csv", bad, "text/csv")]).run()
+            self.assertFalse(at.exception, f"App execution failed when all uploads are invalid: {at.exception}")
+            errors = [e.value for e in at.error if "ไม่มีข้อมูลที่สามารถนำมาวิเคราะห์ได้เลย" in e.value]
+            self.assertEqual(len(errors), 1)
+            notices = [w.value for w in at.warning if "ข้ามไฟล์ที่อ่านไม่ได้" in w.value]
+            self.assertEqual(len(notices), 1, "Expected skipped-file details when all files fail")
+            self.assertIn("bad.csv", notices[0])
         finally:
             if mock_st is not None:
                 sys.modules['streamlit'] = mock_st
