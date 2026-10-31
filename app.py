@@ -704,9 +704,16 @@ with tab4:
         if summary_mode == "รายวัน (Daily)":
             # ⚡ Bolt Optimization: Cast Streamlit UI selectbox outputs to pd.Timestamp for valid datetime64 matching
             daily_dates_ui = [pd.Timestamp(d).date() for d in sorted(df_display['Date'].unique())]
-            df_summary = df_display[df_display['Date'] == pd.Timestamp(st.selectbox("📅 เลือกวัน:", daily_dates_ui))]
+            sel_day = st.selectbox("📅 เลือกวัน:", daily_dates_ui)
+            df_summary = df_display[df_display['Date'] == pd.Timestamp(sel_day)]
+            sel_dt = pd.Timestamp(sel_day)
+            thai_weekdays = ["วันจันทร์", "วันอังคาร", "วันพุธ", "วันพฤหัสบดี", "วันศุกร์", "วันเสาร์", "วันอาทิตย์"]
+            day_name = thai_weekdays[sel_dt.weekday()]
+            scope_desc = f"ประจำวันที่ {sel_dt:%d/%m/%Y} ({day_name})"
         elif summary_mode == "รายเดือน (Monthly)":
-            df_summary = df_display[df_display['Month'] == st.selectbox("📅 เลือกเดือน:", sorted(df_display['Month'].unique()))]
+            sel_month = st.selectbox("📅 เลือกเดือน:", sorted(df_display['Month'].unique()))
+            df_summary = df_display[df_display['Month'] == sel_month]
+            scope_desc = f"ประจำเดือน {sel_month}"
         elif summary_mode == "กำหนดช่วงเวลา (Custom)":
             # ⚡ Bolt Optimization: Use iloc for min/max on already sorted data (handle empty safely)
             if not df_display.empty:
@@ -726,31 +733,53 @@ with tab4:
             if len(date_range) == 2:
                 start_date, end_date = date_range
                 df_summary = df_display[(df_display['Date'] >= pd.Timestamp(start_date)) & (df_display['Date'] <= pd.Timestamp(end_date))]
+                scope_desc = f"ช่วงวันที่ {start_date:%d/%m/%Y} ถึง {end_date:%d/%m/%Y}"
             elif len(date_range) > 0:
                 st.info("📅 กำลังเลือกช่วงเวลา: กรุณาคลิกเลือกวันสิ้นสุดให้ครบถ้วน (ระบบแสดงผลเฉพาะวันเริ่มต้นชั่วคราว)")
                 df_summary = df_display[df_display['Date'] == pd.Timestamp(date_range[0])]
+                scope_desc = f"ประจำวันที่ {date_range[0]:%d/%m/%Y}"
             else:
                 df_summary = df_display.iloc[:0]
+                scope_desc = "กำหนดช่วงเวลา"
         else:
             df_summary = df_display
+            if not df_display.empty:
+                min_c = df_display['Clock'].min()
+                max_c = df_display['Clock'].max()
+                scope_desc = f"ภาพรวมข้อมูลทั้งหมด ({min_c:%d/%m/%Y} ถึง {max_c:%d/%m/%Y})"
+            else:
+                scope_desc = "ภาพรวมข้อมูลทั้งหมด"
             
     if df_summary.empty:
         st.info("ℹ️ ไม่พบข้อมูลการใช้ไฟฟ้าในช่วงเวลาที่เลือก กรุณาตรวจสอบหรือเลือกช่วงวันที่ใหม่")
     else:
         st.markdown("### 📊 สถานะปัจจุบัน (ก่อนจำลองเลื่อนเวลา)")
+        st.caption(f"🗓️ **ขอบเขตข้อมูลที่แสดง:** {scope_desc} • ข้อมูล {len(df_summary):,} รายการ ({df_summary['Date'].nunique():,} วัน)")
         orig_cost = df_summary['Cost_THB'].sum()
         peak_kw_summary = df_summary['kW_Import'].max()
 
         with st.container(border=True):
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("พลังงานที่ใช้ทั้งหมด", f"{df_summary['kWh_15min'].sum():,.2f} kWh")
+            c1.metric(
+                "พลังงานที่ใช้ทั้งหมด",
+                f"{df_summary['kWh_15min'].sum():,.2f} kWh",
+                help="ปริมาณพลังงานไฟฟ้ารวมทั้งหมดที่ใช้ในช่วงเวลาที่เลือก (หน่วย หรือ kWh)"
+            )
             c2.metric(
                 "🔥 โหลดสูงสุด (Peak)",
                 f"{peak_kw_summary:,.2f} kW",
                 help="กำลังไฟฟ้าสูงสุดในช่วงที่เลือก (ไม่ใช่ผลรวม kW ของทุกช่วงเวลา) — ใช้เทียบกับขนาดมิเตอร์หรือค่าความต้องการไฟฟ้า"
             )
-            c3.metric("ค่าไฟฟ้าประเมิน", f"฿ {orig_cost:,.2f}")
-            c4.metric("จุดผิดปกติ (Anomaly)", f"{len(df_summary[df_summary['Anomaly_Type'] != 'ปกติ'])} จุด")
+            c3.metric(
+                "ค่าไฟฟ้าประเมิน",
+                f"฿ {orig_cost:,.2f}",
+                help="ประมาณการค่าไฟฟ้าทั้งหมดตามอัตราค่าไฟที่ตั้งไว้"
+            )
+            c4.metric(
+                "จุดผิดปกติ (Anomaly)",
+                f"{len(df_summary[df_summary['Anomaly_Type'] != 'ปกติ'])} จุด",
+                help="จำนวนช่วงเวลา 15 นาทีที่ตรวจพบโหลดสูงเกินเกณฑ์หรือไฟตก"
+            )
 
             # 🔥 ส่วนที่แก้ไขตามคำขอ: แสดงผล kWh และซ่อน Peak/Off-Peak หากเป็นอัตราเดียว
             st.markdown("##### 🧾 แยกรายละเอียดพลังงาน")
@@ -777,7 +806,7 @@ with tab4:
             else:
                 total_kwh = df_summary['kWh_15min'].sum()
                 total_cost = df_summary['Cost_THB'].sum()
-                st.info(f"**⚡ อัตราเดียว (Single Rate)** ({single_rate} บาท/หน่วย)\n\n⚡ **พลังงานรวมทั้งหมด:** {total_kwh:,.2f} kWh\n\n💰 **เป็นเงินประเมินทั้งหมด:** ฿ {total_cost:,.2f}")
+                st.info(f"**⚡ อัตราเดียว (Single Rate)** ({single_rate:.4f} บาท/หน่วย)\n\n⚡ **พลังงานรวมทั้งหมด:** {total_kwh:,.2f} kWh\n\n💰 **เป็นเงินประเมินทั้งหมด:** ฿ {total_cost:,.2f}")
 
         st.markdown("### 🔄 ระบบจำลองค่าไฟฟ้า (Time-Shift Simulator)")
         with st.container(border=True):
@@ -793,10 +822,16 @@ with tab4:
                 new_cost = df_sim['Cost_THB'].sum()
                 new_peak_kw = df_sim['kW_Import'].max()
 
-                st.markdown(f"#### 📊 สถานะคาดการณ์ (หลังเลื่อน {shift_mins_sim} นาที)")
+                st.markdown(f"#### 📊 สถานะคาดการณ์ (หลังเลื่อน {shift_mins_sim:+d} นาที)")
 
                 c1_sim, c2_sim, c3_sim, c4_sim = st.columns(4)
-                c1_sim.metric("พลังงานที่ใช้ทั้งหมด", f"{df_sim['kWh_15min'].sum():,.2f} kWh")
+                diff_sim_kwh = df_sim['kWh_15min'].sum() - df_summary['kWh_15min'].sum()
+                c1_sim.metric(
+                    "พลังงานที่ใช้ทั้งหมด",
+                    f"{df_sim['kWh_15min'].sum():,.2f} kWh",
+                    delta=f"{diff_sim_kwh:,.2f} kWh" if abs(diff_sim_kwh) > 0.005 else None,
+                    help="ปริมาณพลังงานไฟฟ้ารวมทั้งหมดหลังจำลองการเลื่อนเวลา (kWh)"
+                )
                 c2_sim.metric(
                     "🔥 โหลดสูงสุด (Peak)",
                     f"{new_peak_kw:,.2f} kW",
@@ -807,17 +842,34 @@ with tab4:
                 
                 # คำนวณส่วนต่างราคาเพื่อแสดงลูกศรขึ้น/ลง
                 diff_cost = new_cost - orig_cost
-                c3_sim.metric("ค่าไฟฟ้าประเมินใหม่", f"฿ {new_cost:,.2f}", delta=f"{diff_cost:,.2f} ฿", delta_color="inverse")
-                c4_sim.metric("จุดผิดปกติ (Anomaly)", f"{len(df_sim[df_sim['Anomaly_Type'] != 'ปกติ'])} จุด")
+                c3_sim.metric(
+                    "ค่าไฟฟ้าประเมินใหม่",
+                    f"฿ {new_cost:,.2f}",
+                    delta=f"{diff_cost:,.2f} ฿",
+                    delta_color="inverse",
+                    help="ค่าไฟฟ้าประเมินหลังเลื่อนเวลา เทียบกับก่อนเลื่อน (เดิม: ฿ {:,.2f})".format(orig_cost)
+                )
+                c4_sim.metric(
+                    "จุดผิดปกติ (Anomaly)",
+                    f"{len(df_sim[df_sim['Anomaly_Type'] != 'ปกติ'])} จุด",
+                    help="จำนวนช่วงเวลา 15 นาทีที่ตรวจพบความผิดปกติหลังจำลองเลื่อนเวลา"
+                )
 
                 # 🎯 กล่องสรุปผลต่างค่าไฟ (Simulation Outcome Alert Banner)
                 pct_change = (abs(diff_cost) / orig_cost * 100) if orig_cost > 0 else 0.0
-                if diff_cost < -0.005:
-                    st.success(f"🎉 **ผลการจำลอง:** ประหยัดค่าไฟฟ้าได้ **฿ {abs(diff_cost):,.2f}** (ลดลง **{pct_change:.2f}%**) จากการเลื่อนเวลา {shift_mins_sim:+d} นาที")
-                elif diff_cost > 0.005:
-                    st.warning(f"⚠️ **ผลการจำลอง:** ค่าไฟฟ้าเพิ่มขึ้น **฿ {diff_cost:,.2f}** (เพิ่มขึ้น **{pct_change:.2f}%**) จากการเลื่อนเวลา {shift_mins_sim:+d} นาที (ควรพิจารณาปรับช่วงเวลาใหม่)")
+                if rate_type == "TOU (Time of Use)":
+                    if diff_cost < -0.005:
+                        st.success(f"🎉 **ผลการจำลอง:** ประหยัดค่าไฟฟ้าได้ **฿ {abs(diff_cost):,.2f}** (ลดลง **{pct_change:.2f}%**) จากการเลื่อนเวลา {shift_mins_sim:+d} นาที")
+                    elif diff_cost > 0.005:
+                        st.warning(f"⚠️ **ผลการจำลอง:** ค่าไฟฟ้าเพิ่มขึ้น **฿ {diff_cost:,.2f}** (เพิ่มขึ้น **{pct_change:.2f}%**) จากการเลื่อนเวลา {shift_mins_sim:+d} นาที (ควรพิจารณาปรับช่วงเวลาใหม่)")
+                    else:
+                        st.info(f"ℹ️ **ผลการจำลอง:** ค่าไฟฟ้าคงเดิม ไม่มีการเปลี่ยนแปลง (ผลต่าง ฿ 0.00) จากการเลื่อนเวลา {shift_mins_sim:+d} นาที")
                 else:
-                    st.info(f"ℹ️ **ผลการจำลอง:** ค่าไฟฟ้าคงเดิม ไม่มีการเปลี่ยนแปลง (ผลต่าง ฿ 0.00) จากการเลื่อนเวลา {shift_mins_sim:+d} นาที")
+                    st.info(
+                        f"⚡ **ผลการจำลอง (อัตราคงที่):** ค่าไฟฟ้าคงเดิม (ผลต่าง ฿ 0.00) "
+                        f"เนื่องจากคิดเรทอัตราเดียว ({single_rate:.4f} บาท/หน่วย) ตลอด 24 ชม. "
+                        f"(หากต้องการประเมินการประหยัดค่าไฟจากการย้ายโหลด On-Peak กรุณาเลือก 'TOU' ที่เมนูด้านซ้าย)"
+                    )
 
                 st.markdown("##### 🧾 แยกรายละเอียดพลังงาน (เวลาจำลอง)")
                 sim_cost_summary = df_sim.groupby('Period_Detail')[['kWh_15min', 'Cost_THB']].sum().reset_index()
@@ -843,7 +895,7 @@ with tab4:
                 else:
                     sim_total_kwh = df_sim['kWh_15min'].sum()
                     sim_total_cost = df_sim['Cost_THB'].sum()
-                    st.info(f"**⚡ อัตราเดียว (Single Rate)** ({single_rate} บาท/หน่วย)\n\n⚡ **พลังงานรวมทั้งหมด:** {sim_total_kwh:,.2f} kWh\n\n💰 **เป็นเงินประเมินทั้งหมด:** ฿ {sim_total_cost:,.2f}")
+                    st.info(f"**⚡ อัตราเดียว (Single Rate)** ({single_rate:.4f} บาท/หน่วย)\n\n⚡ **พลังงานรวมทั้งหมด:** {sim_total_kwh:,.2f} kWh\n\n💰 **เป็นเงินประเมินทั้งหมด:** ฿ {sim_total_cost:,.2f}")
 
                 st.markdown("##### 📋 ตารางข้อมูลหลังจำลองเวลา")
                 sim_display_table = df_sim[['Clock', 'kW_Import', 'kWh_15min', 'Period_Detail', 'Rate_THB', 'Cost_THB', 'Anomaly_Type']].copy()
