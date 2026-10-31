@@ -146,25 +146,32 @@ def get_upload_size(uploaded_file):
     คืนขนาดไฟล์ที่อัปโหลดเป็นไบต์ หรือ None หากตรวจสอบไม่ได้
     รองรับทั้งออบเจกต์ที่มี attribute size (Streamlit UploadedFile), file-like ที่มี getbuffer()
     และ stream ที่รองรับ seek/tell (เช่น TemporaryFile, BufferedReader)
+    ไม่ยอมรับค่าขนาดติดลบ (เช่น -1 จาก chunked transfer หรือการปลอมแปลง) และจะตรวจหาขนาดจริงจาก stream
     """
     size = getattr(uploaded_file, 'size', None)
     if size is not None:
         try:
-            return int(size)
+            val = int(size)
+            if val >= 0:
+                return val
         except (TypeError, ValueError):
-            return None
+            pass
     if hasattr(uploaded_file, 'getbuffer'):
         try:
-            return uploaded_file.getbuffer().nbytes
+            val = uploaded_file.getbuffer().nbytes
+            if val >= 0:
+                return int(val)
         except Exception:
-            return None
+            pass
     if hasattr(uploaded_file, 'seek') and hasattr(uploaded_file, 'tell'):
         try:
             curr_pos = uploaded_file.tell()
             uploaded_file.seek(0, io.SEEK_END)
             end_pos = uploaded_file.tell()
             uploaded_file.seek(curr_pos)
-            return int(end_pos)
+            val = int(end_pos)
+            if val >= 0:
+                return val
         except Exception:
             try:
                 uploaded_file.seek(0)
@@ -190,7 +197,7 @@ def validate_upload_batch(uploaded_files):
     total_bytes = 0
     for uploaded_file in files:
         size = get_upload_size(uploaded_file)
-        if size is not None:
+        if size is not None and size > 0:
             total_bytes += size
             if total_bytes > MAX_TOTAL_UPLOAD_BYTES:
                 raise UploadValidationError(
