@@ -137,6 +137,52 @@ DEFAULT_OUTLIER_V_MAX = 2000000
 ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls', 'txt'}
 MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 MAX_EXCEL_UNCOMPRESSED_BYTES = 256 * 1024 * 1024  # 256 MB (กัน Zip Bomb ใน .xlsx)
+MAX_UPLOAD_FILES = 20  # จำนวนไฟล์สูงสุดต่อการอัปโหลดหนึ่งครั้ง
+MAX_TOTAL_UPLOAD_BYTES = 200 * 1024 * 1024  # 200 MB (กัน Resource Exhaustion จากหลายไฟล์)
+
+
+def get_upload_size(uploaded_file):
+    """
+    คืนขนาดไฟล์ที่อัปโหลดเป็นไบต์ หรือ None หากตรวจสอบไม่ได้
+    รองรับทั้งออบเจกต์ที่มี attribute size (Streamlit UploadedFile) และ file-like ที่มี getbuffer()
+    """
+    size = getattr(uploaded_file, 'size', None)
+    if size is not None:
+        try:
+            return int(size)
+        except (TypeError, ValueError):
+            return None
+    if hasattr(uploaded_file, 'getbuffer'):
+        try:
+            return uploaded_file.getbuffer().nbytes
+        except Exception:
+            return None
+    return None
+
+
+def validate_upload_batch(uploaded_files):
+    """
+    จำกัดจำนวนไฟล์และขนาดรวมต่อการอัปโหลดหนึ่งครั้ง เพื่อป้องกัน
+    Resource Exhaustion / Denial of Service (CWE-770) จากการอัปโหลดหลายไฟล์พร้อมกัน
+    แม้แต่ละไฟล์จะผ่านเพดานขนาดต่อไฟล์แล้วก็ตาม
+    คืนค่าขนาดรวม (ไบต์) เมื่อผ่านการตรวจสอบ
+    """
+    files = list(uploaded_files or [])
+    if len(files) > MAX_UPLOAD_FILES:
+        raise UploadValidationError(
+            f"อัปโหลดได้ไม่เกิน {MAX_UPLOAD_FILES} ไฟล์ต่อครั้ง"
+        )
+
+    total_bytes = 0
+    for uploaded_file in files:
+        size = get_upload_size(uploaded_file)
+        if size is not None:
+            total_bytes += size
+            if total_bytes > MAX_TOTAL_UPLOAD_BYTES:
+                raise UploadValidationError(
+                    f"ขนาดไฟล์รวมเกินกำหนด (สูงสุด {MAX_TOTAL_UPLOAD_BYTES // (1024 * 1024)} MB)"
+                )
+    return total_bytes
 
 
 def validate_excel_archive(uploaded_file):
@@ -647,12 +693,7 @@ def load_file(uploaded_file, file_ext):
         )
 
     # ตรวจสอบขนาดไฟล์เพื่อป้องกัน Denial of Service (DoS / Resource Exhaustion)
-    file_size = getattr(uploaded_file, 'size', None)
-    if file_size is None and hasattr(uploaded_file, 'getbuffer'):
-        try:
-            file_size = uploaded_file.getbuffer().nbytes
-        except Exception:
-            file_size = None
+    file_size = get_upload_size(uploaded_file)
     if file_size is not None and file_size > MAX_FILE_SIZE_BYTES:
         raise UploadValidationError(f"ขนาดไฟล์เกินกำหนด (สูงสุด {MAX_FILE_SIZE_BYTES // (1024 * 1024)} MB)")
 

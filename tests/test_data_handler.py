@@ -290,6 +290,70 @@ class TestDataHandler(unittest.TestCase):
                         found_uploader_with_type = True
         self.assertTrue(found_uploader_with_type, "st.file_uploader must specify allowed 'type' parameter")
 
+    def test_validate_upload_batch_rejects_too_many_files(self):
+        from data_handler import validate_upload_batch, UploadValidationError, MAX_UPLOAD_FILES
+
+        class FakeFile:
+            def __init__(self, size):
+                self.size = size
+
+        files = [FakeFile(1) for _ in range(MAX_UPLOAD_FILES + 1)]
+        with self.assertRaises(UploadValidationError) as ctx:
+            validate_upload_batch(files)
+        self.assertIn("ไฟล์ต่อครั้ง", str(ctx.exception))
+
+    def test_validate_upload_batch_rejects_aggregate_size_over_limit(self):
+        from data_handler import validate_upload_batch, UploadValidationError, MAX_TOTAL_UPLOAD_BYTES
+
+        class FakeFile:
+            def __init__(self, size):
+                self.size = size
+
+        # Each file individually passes the per-file limit but the batch does not.
+        per_file = MAX_TOTAL_UPLOAD_BYTES // 4 + 1
+        files = [FakeFile(per_file) for _ in range(4)]
+        with self.assertRaises(UploadValidationError) as ctx:
+            validate_upload_batch(files)
+        self.assertIn("ขนาดไฟล์รวมเกินกำหนด", str(ctx.exception))
+
+    def test_validate_upload_batch_allows_batch_within_limits(self):
+        from data_handler import validate_upload_batch, MAX_TOTAL_UPLOAD_BYTES
+
+        class FakeFile:
+            def __init__(self, size):
+                self.size = size
+
+        files = [FakeFile(1024), FakeFile(2048)]
+        total = validate_upload_batch(files)
+        self.assertEqual(total, 3072)
+        self.assertLess(total, MAX_TOTAL_UPLOAD_BYTES)
+
+    def test_validate_upload_batch_uses_getbuffer_when_size_missing(self):
+        import io
+        from data_handler import validate_upload_batch
+
+        buffer = io.BytesIO(b"x" * 10)
+        self.assertEqual(validate_upload_batch([buffer]), 10)
+
+    def test_app_enforces_upload_batch_limits(self):
+        import ast
+        app_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'app.py'))
+        with open(app_path, 'r', encoding='utf-8') as f:
+            tree = ast.parse(f.read())
+
+        imported = any(
+            isinstance(node, ast.ImportFrom) and node.module == 'data_handler'
+            and any(alias.name == 'validate_upload_batch' for alias in node.names)
+            for node in ast.walk(tree)
+        )
+        self.assertTrue(imported, "app.py must import validate_upload_batch from data_handler")
+
+        calls = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'validate_upload_batch'
+        ]
+        self.assertTrue(calls, "app.py must call validate_upload_batch before processing uploads")
+
     def test_is_header_row_patterns(self):
         from data_handler import is_header_row
         # Must recognize standard English date and time combinations
