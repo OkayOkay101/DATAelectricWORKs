@@ -1544,5 +1544,57 @@ class TestDataHandler(unittest.TestCase):
         pd.testing.assert_frame_equal(actual, expected)
 
 
+class TestSafeErrorReason(unittest.TestCase):
+    """UI ต้องแสดงเฉพาะข้อความที่เราควบคุมเอง ไม่ใช่ str(e) ดิบของ exception ภายนอก"""
+
+    def test_upload_validation_error_keeps_our_own_message(self):
+        from data_handler import UploadValidationError, safe_error_reason
+        # ยังคงเป็น ValueError เพื่อความเข้ากันได้กับผู้เรียกเดิม
+        exc = UploadValidationError("ขนาดไฟล์เกินกำหนด (สูงสุด 50 MB)")
+        self.assertIsInstance(exc, ValueError)
+        self.assertEqual(safe_error_reason(exc), "ขนาดไฟล์เกินกำหนด (สูงสุด 50 MB)")
+
+    def test_external_exception_text_is_never_revealed(self):
+        from data_handler import safe_error_reason, GENERIC_LOAD_ERROR_REASON
+        leaked = ValueError("Failed to read C:\\Users\\admin\\secret\\payroll.xlsx\nTraceback (most recent call last)")
+        reason = safe_error_reason(leaked)
+        self.assertEqual(reason, GENERIC_LOAD_ERROR_REASON)
+        self.assertNotIn("secret", reason)
+        self.assertNotIn("Traceback", reason)
+
+        # exception ที่ไม่ใช่ ValueError ก็ต้องถูกปิดเช่นกัน
+        reason = safe_error_reason(OSError("/srv/app/internal/config.ini"))
+        self.assertEqual(reason, GENERIC_LOAD_ERROR_REASON)
+        self.assertNotIn("/srv", reason)
+
+    def test_empty_upload_validation_message_falls_back_to_generic(self):
+        from data_handler import UploadValidationError, safe_error_reason, GENERIC_LOAD_ERROR_REASON
+        self.assertEqual(safe_error_reason(UploadValidationError("   ")), GENERIC_LOAD_ERROR_REASON)
+        self.assertEqual(safe_error_reason(None), GENERIC_LOAD_ERROR_REASON)
+
+    def test_upload_validation_message_is_length_bounded(self):
+        from data_handler import UploadValidationError, safe_error_reason, MAX_ERROR_REASON_LENGTH
+        reason = safe_error_reason(UploadValidationError("x" * 5000))
+        self.assertEqual(len(reason), MAX_ERROR_REASON_LENGTH)
+
+    def test_load_file_validation_failures_use_upload_validation_error(self):
+        import io
+        from data_handler import load_file, UploadValidationError
+
+        with self.assertRaises(UploadValidationError):
+            load_file(io.BytesIO(b"Clock,kW_Import,Voltage\n01/01/2026 00:00,100,220\n"), "exe")
+
+        with self.assertRaises(UploadValidationError):
+            load_file(io.BytesIO(b"hello,world\nfoo,bar\nbaz,qux\n"), "csv")
+
+        class OversizedFile(io.BytesIO):
+            def __init__(self):
+                super().__init__(b"Clock,kW_Import,Voltage\n01/01/2026 00:00,100,220\n")
+                self.size = 51 * 1024 * 1024
+
+        with self.assertRaises(UploadValidationError):
+            load_file(OversizedFile(), "csv")
+
+
 if __name__ == '__main__':
     unittest.main()

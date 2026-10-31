@@ -11,6 +11,32 @@ PURE_NUMBER_PATTERN = re.compile(r'^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$')
 DANGEROUS_FORMULA_PREFIXES = ('=', '@', '\t', '\r', '|', '%')
 
 
+class UploadValidationError(ValueError):
+    """
+    ข้อผิดพลาดจากการตรวจสอบไฟล์ที่ "เราสร้างข้อความเอง" และปลอดภัยต่อการแสดงบน UI
+    แยกออกจาก ValueError ทั่วไป (เช่น จากไลบรารีภายนอก) เพื่อไม่ให้ข้อความภายใน
+    ที่อาจมี path หรือรายละเอียดระบบรั่วไหลออกหน้าจอ (CWE-209)
+    """
+
+
+GENERIC_LOAD_ERROR_REASON = "รูปแบบไฟล์ไม่รองรับ หรือไฟล์อาจเสียหาย"
+MAX_ERROR_REASON_LENGTH = 300
+
+
+def safe_error_reason(exc):
+    """
+    คืนข้อความอธิบายข้อผิดพลาดที่ปลอดภัยต่อการแสดงผลบน UI
+    - แสดงเฉพาะข้อความจาก UploadValidationError ที่เราควบคุมเอง
+    - exception อื่น ๆ (รวมถึง ValueError จาก pandas/openpyxl) ถูกแทนด้วยข้อความกลาง ๆ
+      เพื่อไม่ให้ stack trace, path ภายใน หรือข้อมูลระบบรั่วไหลสู่ผู้ใช้
+    """
+    if isinstance(exc, UploadValidationError):
+        message = str(exc).strip()
+        if message:
+            return message[:MAX_ERROR_REASON_LENGTH]
+    return GENERIC_LOAD_ERROR_REASON
+
+
 def sanitize_csv_cell(val):
     """
     ฆ่าเชื้อข้อมูลเซลล์เพื่อป้องกัน CSV / Formula Injection (CWE-1236)
@@ -136,7 +162,7 @@ def validate_excel_archive(uploaded_file):
             pass
 
     if total_uncompressed > MAX_EXCEL_UNCOMPRESSED_BYTES:
-        raise ValueError(
+        raise UploadValidationError(
             f"ไฟล์ Excel มีข้อมูลเมื่อแตกไฟล์เกินกำหนด (สูงสุด {MAX_EXCEL_UNCOMPRESSED_BYTES // (1024 * 1024)} MB)"
         )
 
@@ -612,11 +638,11 @@ def parse_excel_df(df_raw):
 @st.cache_data
 def load_file(uploaded_file, file_ext):
     if not file_ext or not isinstance(file_ext, str):
-        raise ValueError("ไม่พบนามสกุลไฟล์ที่ถูกต้อง")
+        raise UploadValidationError("ไม่พบนามสกุลไฟล์ที่ถูกต้อง")
 
     clean_ext = file_ext.lower().lstrip('.')
     if clean_ext not in ALLOWED_EXTENSIONS:
-        raise ValueError(
+        raise UploadValidationError(
             f"ไม่อนุญาตให้อัปโหลดไฟล์นามสกุล .{clean_ext} (รองรับเฉพาะ: {', '.join(sorted(ALLOWED_EXTENSIONS))})"
         )
 
@@ -628,7 +654,7 @@ def load_file(uploaded_file, file_ext):
         except Exception:
             file_size = None
     if file_size is not None and file_size > MAX_FILE_SIZE_BYTES:
-        raise ValueError(f"ขนาดไฟล์เกินกำหนด (สูงสุด {MAX_FILE_SIZE_BYTES // (1024 * 1024)} MB)")
+        raise UploadValidationError(f"ขนาดไฟล์เกินกำหนด (สูงสุด {MAX_FILE_SIZE_BYTES // (1024 * 1024)} MB)")
 
     df_result = None
 
@@ -703,7 +729,7 @@ def load_file(uploaded_file, file_ext):
                             pass
 
     if df_result is None or df_result.empty:
-        raise ValueError("อ่านไฟล์ไม่สำเร็จ โครงสร้างไฟล์ผิดปกติหรือไม่พบข้อมูลเวลา")
+        raise UploadValidationError("อ่านไฟล์ไม่สำเร็จ โครงสร้างไฟล์ผิดปกติหรือไม่พบข้อมูลเวลา")
 
     return df_result
 

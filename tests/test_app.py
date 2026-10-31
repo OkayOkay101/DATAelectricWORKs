@@ -18,6 +18,39 @@ class TestApp(unittest.TestCase):
                         break
         self.assertTrue(found_sanitization, "convert_df_to_csv must invoke sanitize_dataframe_for_csv")
 
+    def test_skip_reason_uses_whitelisted_error_helper(self):
+        """UI ต้องไม่แสดง str(e) ของ exception ภายนอกผ่าน safe_error_reason"""
+        import ast
+        import os
+        app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.py')
+        with open(app_path, 'r', encoding='utf-8') as f:
+            tree = ast.parse(f.read())
+
+        imported = any(
+            isinstance(node, ast.ImportFrom) and node.module == 'data_handler'
+            and any(alias.name == 'safe_error_reason' for alias in node.names)
+            for node in ast.walk(tree)
+        )
+        self.assertTrue(imported, "app.py must import safe_error_reason from data_handler")
+
+        calls = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'safe_error_reason'
+        ]
+        self.assertTrue(calls, "app.py must use safe_error_reason when reporting skipped files")
+
+        # ต้องไม่มีการนำ str(e) ของ exception ใด ๆ ไปเป็น reason ให้ UI
+        raw_reason_leaks = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == 'reason' for t in node.targets)
+            and any(
+                isinstance(child, ast.Call) and getattr(child.func, 'id', '') == 'str'
+                for child in ast.walk(node.value)
+            )
+        ]
+        self.assertEqual(raw_reason_leaks, [], "raw str(e) must not be rendered as a skip reason")
+
     def test_regression_date_update(self):
         """
         Regression test: Ensure that shifting 'Clock' updates 'Date' correctly
