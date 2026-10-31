@@ -1177,6 +1177,77 @@ class TestDataHandler(unittest.TestCase):
         })
         pd.testing.assert_frame_equal(preprocess_data(df_d), baseline_preprocess(df_d))
 
+    def test_fast_byte_reordering_datetime_parser_parity(self):
+        """⚡ Bolt: Verify fast vectorized byte-reordering datetime parser matches pd.to_datetime exact parity."""
+        from data_handler import fast_parse_datetime, preprocess_data
+
+        dates = pd.date_range("2026-01-01 00:00", periods=200, freq="15min")
+
+        # 1. 16-char DMY with slash and hyphen
+        s_slash_16 = pd.Series([d.strftime("%d/%m/%Y %H:%M") for d in dates])
+        s_hyphen_16 = pd.Series([d.strftime("%d-%m-%Y %H:%M") for d in dates])
+        pd.testing.assert_series_equal(
+            fast_parse_datetime(s_slash_16, dayfirst=True),
+            pd.to_datetime(s_slash_16, format="%d/%m/%Y %H:%M", errors="coerce")
+        )
+        pd.testing.assert_series_equal(
+            fast_parse_datetime(s_hyphen_16, dayfirst=True),
+            pd.to_datetime(s_hyphen_16, format="%d-%m-%Y %H:%M", errors="coerce")
+        )
+
+        # 2. 19-char DMY with seconds
+        s_slash_19 = pd.Series([d.strftime("%d/%m/%Y %H:%M:%S") for d in dates])
+        s_hyphen_19 = pd.Series([d.strftime("%d-%m-%Y %H:%M:%S") for d in dates])
+        pd.testing.assert_series_equal(
+            fast_parse_datetime(s_slash_19, dayfirst=True),
+            pd.to_datetime(s_slash_19, format="%d/%m/%Y %H:%M:%S", errors="coerce")
+        )
+        pd.testing.assert_series_equal(
+            fast_parse_datetime(s_hyphen_19, dayfirst=True),
+            pd.to_datetime(s_hyphen_19, format="%d-%m-%Y %H:%M:%S", errors="coerce")
+        )
+
+        # 3. Missing, null, and malformed entries
+        s_mixed = pd.Series([
+            "01/01/2026 00:00",
+            None,
+            "",
+            "   ",
+            np.nan,
+            "corrupted_text",
+            "31/02/2026 00:00",
+            "01/01/2026 00:15",
+            "01/01/2026 00:30"
+        ], index=[10, 10, 20, 30, 40, 50, 60, 70, 80])
+        expected_mixed = pd.to_datetime(s_mixed, dayfirst=True, errors="coerce", format="mixed")
+        actual_mixed = fast_parse_datetime(s_mixed, dayfirst=True)
+        pd.testing.assert_series_equal(actual_mixed, expected_mixed)
+
+        # 4. Full DataFrame comparison through preprocess_data
+        df_input = pd.DataFrame({
+            'Clock': [d.strftime("%d/%m/%Y %H:%M") for d in dates[:50]] + ["invalid", None] + [d.strftime("%d/%m/%Y %H:%M") for d in dates[52:100]],
+            'kW_Import': [f"{100 + i * 0.5:.2f}" for i in range(100)],
+            'Voltage': ["220.0"] * 100
+        })
+        # Baseline using standard format='mixed'
+        df_base = df_input.copy()
+        df_base['kW_Import'] = pd.to_numeric(df_base['kW_Import'], errors='coerce').fillna(0.0)
+        df_base['Voltage'] = pd.to_numeric(df_base['Voltage'], errors='coerce').fillna(220.0)
+        df_base['Clock'] = pd.to_datetime(df_base['Clock'], dayfirst=True, errors='coerce', format='mixed')
+        df_base = df_base.dropna(subset=['Clock']).reset_index(drop=True)
+        df_base['Date'] = df_base['Clock'].dt.normalize()
+        c_dt = df_base['Clock'].dt
+        ym = c_dt.year * 100 + c_dt.month
+        ym_dict = {v: f'{v // 100:04d}-{v % 100:02d}' for v in ym.unique()}
+        df_base['Month'] = ym.map(ym_dict)
+        hm = c_dt.hour * 60 + c_dt.minute
+        hm_dict = {v: f'{v // 60:02d}:{v % 60:02d}' for v in hm.unique()}
+        df_base['Time_Str'] = hm.map(hm_dict)
+        df_base['kWh_15min'] = df_base['kW_Import'] / 4.0
+
+        df_out = preprocess_data(df_input)
+        pd.testing.assert_frame_equal(df_out, df_base)
+
 
 if __name__ == '__main__':
     unittest.main()
