@@ -266,11 +266,43 @@ class TestApp(unittest.TestCase):
             fig_15min_anom_spec = json.loads(plotly_charts_anom[4].proto.spec)
             anom_trace_names = [t.get('name') for t in fig_15min_anom_spec.get('data', [])]
             self.assertIn("สูงกว่าเกณฑ์", anom_trace_names, "Expected 'สูงกว่าเกณฑ์' anomaly trace on daily chart")
+
+            # Test Tab 4 custom date selection guidance and empty state
+            import datetime
+            multi_day_df = pd.DataFrame({
+                'Clock': ['2026-01-01 10:00:00', '2026-01-05 10:00:00'],
+                'kW_Import': [100.0, 110.0],
+                'Voltage': [220.0, 220.0]
+            })
+            multi_buf = io.BytesIO()
+            multi_day_df.to_csv(multi_buf, index=False)
+            at.file_uploader[0].set_value([("multi_day.csv", multi_buf.getvalue(), "text/csv")]).run()
+
+            # Switch Tab 4 summary mode to "กำหนดช่วงเวลา (Custom)"
+            radios = [r for r in at.radio if "ระดับการสรุปผล" in r.label or "กำหนดช่วงเวลา (Custom)" in r.options]
+            self.assertTrue(len(radios) > 0, "Expected summary mode radio button in Tab 4")
+            radios[0].set_value("กำหนดช่วงเวลา (Custom)").run()
+
+            date_inputs = [di for di in at.date_input if "เลือกช่วงเวลา" in di.label]
+            self.assertEqual(len(date_inputs), 1, "Expected custom date range input in Tab 4")
+
+            # Case 1: Incomplete date selection (only start date selected)
+            date_inputs[0].set_value((datetime.date(2026, 1, 1),)).run()
+            self.assertFalse(at.exception, f"App execution failed on single date: {at.exception}")
+            guidance_info = [inf.value for inf in at.info if "กรุณาคลิกเลือกวันสิ้นสุดให้ครบถ้วน" in inf.value]
+            self.assertTrue(len(guidance_info) > 0, "Expected guidance message when only start date is selected")
+
+            # Case 2: Date range with no data records (e.g. 2026-01-02 to 2026-01-03)
+            date_inputs[0].set_value((datetime.date(2026, 1, 2), datetime.date(2026, 1, 3))).run()
+            self.assertFalse(at.exception, f"App execution failed on empty date range: {at.exception}")
+            empty_info = [inf.value for inf in at.info if "ไม่พบข้อมูลการใช้ไฟฟ้าในช่วงเวลาที่เลือก" in inf.value]
+            self.assertTrue(len(empty_info) > 0, "Expected empty state message when selected range has no data")
+
+            # Ensure metrics and simulation download button are hidden when data is empty
+            tab4_metrics = [m for m in at.metric if m.label == "พลังงานที่ใช้ทั้งหมด"]
+            self.assertEqual(len(tab4_metrics), 0, "Expected Tab 4 metrics to be hidden when summary data is empty")
+            sim_downloads = [db for db in at.download_button if "ดาวน์โหลดผลการจำลองค่าไฟ" in db.label]
+            self.assertEqual(len(sim_downloads), 0, "Expected simulation download button to be hidden when summary data is empty")
         finally:
             if mock_st is not None:
                 sys.modules['streamlit'] = mock_st
-
-
-
-
-
