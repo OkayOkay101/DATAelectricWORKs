@@ -1348,6 +1348,88 @@ class TestDataHandler(unittest.TestCase):
         })
         pd.testing.assert_frame_equal(preprocess_data(df_d), baseline_preprocess(df_d))
 
+    def test_sort_and_deduplicate_by_clock_fast_path_and_parity(self):
+        import data_handler
+        from unittest.mock import patch
+        from pandas.testing import assert_frame_equal
+
+        def baseline(df_in):
+            return (
+                df_in.sort_values(['Clock', 'kW_Import'], ascending=[True, False])
+                .drop_duplicates(subset=['Clock'], keep='first')
+                .reset_index(drop=True)
+            )
+
+        dates = pd.date_range('2026-01-01 00:00', periods=200, freq='15min')
+        rng = np.random.default_rng(42)
+        df_sorted = pd.DataFrame({
+            'Clock': dates,
+            'kW_Import': rng.uniform(10, 200, len(dates)),
+            'Voltage': 220.0,
+            'Month': dates.strftime('%Y-%m'),
+        })
+
+        expected_sorted = baseline(df_sorted)
+        with patch.object(
+            pd.DataFrame,
+            'sort_values',
+            side_effect=AssertionError('chronological data must bypass sort_values'),
+        ):
+            result_sorted = data_handler.sort_and_deduplicate_by_clock(df_sorted)
+        assert_frame_equal(result_sorted, expected_sorted)
+
+        df_unsorted = df_sorted.sample(frac=1.0, random_state=1).reset_index(drop=True)
+        assert_frame_equal(
+            data_handler.sort_and_deduplicate_by_clock(df_unsorted),
+            baseline(df_unsorted),
+        )
+
+        df_duplicates = pd.DataFrame({
+            'Clock': [dates[0], dates[0], dates[1], dates[1], dates[2]],
+            'kW_Import': [10.0, 50.0, 100.0, 20.0, 30.0],
+            'Voltage': [220.0, 221.0, 220.0, 220.0, 220.0],
+        })
+        assert_frame_equal(
+            data_handler.sort_and_deduplicate_by_clock(df_duplicates),
+            baseline(df_duplicates),
+        )
+
+        df_nat = pd.DataFrame({
+            'Clock': [dates[0], dates[1], pd.NaT],
+            'kW_Import': [10.0, 20.0, 30.0],
+        })
+        assert_frame_equal(
+            data_handler.sort_and_deduplicate_by_clock(df_nat),
+            baseline(df_nat),
+        )
+
+        df_non_range_index = df_sorted.iloc[::2]
+        assert_frame_equal(
+            data_handler.sort_and_deduplicate_by_clock(df_non_range_index),
+            baseline(df_non_range_index),
+        )
+
+        df_string_clock = pd.DataFrame({
+            'Clock': dates.strftime('%Y-%m-%d %H:%M:%S'),
+            'kW_Import': np.arange(len(dates), dtype='float64'),
+        })
+        assert_frame_equal(
+            data_handler.sort_and_deduplicate_by_clock(df_string_clock),
+            baseline(df_string_clock),
+        )
+
+        df_single = df_sorted.iloc[[0]]
+        assert_frame_equal(
+            data_handler.sort_and_deduplicate_by_clock(df_single),
+            baseline(df_single),
+        )
+
+        df_empty = pd.DataFrame(columns=['Clock', 'kW_Import'])
+        assert_frame_equal(
+            data_handler.sort_and_deduplicate_by_clock(df_empty),
+            baseline(df_empty),
+        )
+
     def test_fast_byte_reordering_datetime_parser_parity(self):
         """⚡ Bolt: Verify fast vectorized byte-reordering datetime parser matches pd.to_datetime exact parity."""
         from data_handler import fast_parse_datetime, preprocess_data

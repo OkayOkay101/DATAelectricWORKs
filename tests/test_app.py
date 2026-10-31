@@ -18,6 +18,27 @@ class TestApp(unittest.TestCase):
                         break
         self.assertTrue(found_sanitization, "convert_df_to_csv must invoke sanitize_dataframe_for_csv")
 
+    def test_app_uses_sort_and_deduplicate_by_clock(self):
+        """app.py must use the monotonic fast-path helper when merging uploaded files."""
+        import ast
+        import os
+        app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.py')
+        with open(app_path, 'r', encoding='utf-8') as f:
+            tree = ast.parse(f.read())
+
+        imported = any(
+            isinstance(node, ast.ImportFrom) and node.module == 'data_handler'
+            and any(alias.name == 'sort_and_deduplicate_by_clock' for alias in node.names)
+            for node in ast.walk(tree)
+        )
+        self.assertTrue(imported, "app.py must import sort_and_deduplicate_by_clock from data_handler")
+
+        calls = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and getattr(node.func, 'id', '') == 'sort_and_deduplicate_by_clock'
+        ]
+        self.assertTrue(calls, "app.py must call sort_and_deduplicate_by_clock when combining files")
+
     def test_skip_reason_uses_whitelisted_error_helper(self):
         """UI ต้องไม่แสดง str(e) ของ exception ภายนอกผ่าน safe_error_reason"""
         import ast
