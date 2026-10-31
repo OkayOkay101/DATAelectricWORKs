@@ -230,15 +230,18 @@ def parse_text_lines(lines, delimiter=','):
         elif 'voltage' in c_clean or 'ch3' == c_clean or 'แรงดัน' in c_clean or c_clean == 'v' or 'volt' in c_clean: 
             v_idx = i
         
+        # คอลัมน์ kWh คือพลังงานสะสม ไม่ใช่กำลังไฟฟ้า จึงต้องไม่ถูกเลือกเป็น kW
+        is_energy_col = 'kwh' in c_clean
+
         # เพิ่มระบบค้นหาคอลัมน์พลังงานแบบหว่านแห (ทั้ง Import, Export และ Active Power)
-        if ('kw' in c_clean and 'demand' in c_clean) or \
+        if not is_energy_col and (('kw' in c_clean and 'demand' in c_clean) or \
            ('import' in c_clean and 'kw' in c_clean) or \
            ('export' in c_clean and 'kw' in c_clean) or \
            'ch4' == c_clean or \
            ('active' in c_clean and 'power' in c_clean) or \
            'พลังงาน' in c_clean or \
            'กำลังไฟฟ้า' in c_clean or \
-           c_clean == 'kw': 
+           c_clean == 'kw'):
             kw_idx_candidates.append(i)
     
     kw_idx = -1
@@ -482,8 +485,11 @@ def parse_excel_df(df_raw):
         elif 'voltage' in c_clean or 'ch3' == c_clean or 'แรงดัน' in c_clean or c_clean == 'v' or 'volt' in c_clean: 
             v_col = c
         
+        # คอลัมน์ kWh คือพลังงานสะสม ไม่ใช่กำลังไฟฟ้า จึงต้องไม่ถูกเลือกเป็น kW
+        is_energy_col = 'kwh' in c_clean
+
         # 🎯 เก็บผู้ท้าชิงคอลัมน์พลังงานทั้งหมด (ทั้ง Import และ Export)
-        if ('kw' in c_clean and 'demand' in c_clean) or \
+        if not is_energy_col and (('kw' in c_clean and 'demand' in c_clean) or \
            ('import' in c_clean and 'kw' in c_clean) or \
            ('export' in c_clean and 'kw' in c_clean) or \
            'ch4' == c_clean or \
@@ -491,7 +497,7 @@ def parse_excel_df(df_raw):
            ('active' in c_clean and 'power' in c_clean) or \
            'พลังงาน' in c_clean or \
            'กำลังไฟฟ้า' in c_clean or \
-           c_clean == 'kw': 
+           c_clean == 'kw'):
             kw_candidates.append(c)
             
     kw_col = None
