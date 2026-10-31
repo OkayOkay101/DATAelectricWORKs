@@ -355,6 +355,37 @@ class TestDataHandler(unittest.TestCase):
         self.assertEqual(df.iloc[0]['kW_Import'], 100.5)
         self.assertEqual(df.iloc[0]['Voltage'], 220.0)
 
+    def test_parse_text_lines_prefers_kw_over_kwh_column(self):
+        # A cumulative kWh column contains "kw" as a substring and often has a
+        # larger sum, but it must never be selected as the instantaneous kW value.
+        lines = [
+            "Clock, Import kWh, Import kW, Voltage",
+            "01/01/2026 00:15, 400.0, 100.0, 220",
+            "01/01/2026 00:30, 440.0, 110.0, 221",
+        ]
+        df = parse_text_lines(lines, delimiter=',')
+        self.assertIsNotNone(df)
+        self.assertEqual(df['kW_Import'].tolist(), ['100.0', '110.0'])
+        self.assertEqual(df['Voltage'].tolist(), ['220', '221'])
+
+    def test_parse_excel_df_prefers_kw_over_kwh_column(self):
+        df_raw = pd.DataFrame([
+            ["Clock", "Import kWh", "Import kW", "Voltage"],
+            ["01/01/2026 00:15", 400.0, 100.0, 220],
+            ["01/01/2026 00:30", 440.0, 110.0, 221],
+        ])
+        df = parse_excel_df(df_raw)
+        self.assertIsNotNone(df)
+        self.assertEqual(df['kW_Import'].tolist(), [100.0, 110.0])
+        self.assertEqual(df['Voltage'].tolist(), [220.0, 221.0])
+
+    def test_parse_text_lines_energy_only_column_is_not_power(self):
+        lines = [
+            "Clock, Import kWh, Voltage",
+            "01/01/2026 00:15, 400.0, 220",
+        ]
+        self.assertIsNone(parse_text_lines(lines, delimiter=','))
+
     def test_parse_excel_df_filters_footer_in_time_column_and_empty_time(self):
         # Excel files with separate Date and Time columns must filter footers in Time (e.g. Total, P, OP, H, empty)
         df_raw = pd.DataFrame([
