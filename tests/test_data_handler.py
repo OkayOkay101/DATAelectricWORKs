@@ -709,6 +709,59 @@ class TestDataHandler(unittest.TestCase):
         self.assertGreater(len(midnight_rows), 0)
         self.assertTrue((midnight_rows['Time_Str'].str.slice(0, 2) == '00').all())
 
+    def test_preprocess_data_integer_epoch_datetime_fields_parity(self):
+        # ⚡ Bolt: Date/Month/Time_Str must match the legacy .dt accessor derivation exactly,
+        # including pre-1970 dates, century leap-year rules and year/month boundaries.
+        from data_handler import fast_parse_datetime
+
+        dates = pd.to_datetime([
+            '1900-02-28 23:45', '1900-03-01 00:00',
+            '1969-12-31 23:45', '1970-01-01 00:00',
+            '2000-02-29 12:30', '2024-02-29 23:45',
+            '2024-03-01 00:00', '2026-12-31 23:45', '2027-01-01 00:00',
+        ])
+        df_in = pd.DataFrame({
+            'Clock': dates.strftime('%d/%m/%Y %H:%M'),
+            'kW_Import': [f"{100 + i:.1f}" for i in range(len(dates))],
+            'Voltage': ['220.0'] * len(dates),
+        }, index=range(100, 100 + len(dates)))
+
+        expected = df_in.copy()
+        expected['kW_Import'] = pd.to_numeric(expected['kW_Import'], errors='coerce').fillna(0)
+        expected['Voltage'] = pd.to_numeric(expected['Voltage'], errors='coerce').fillna(220.0)
+        expected['Clock'] = fast_parse_datetime(expected['Clock'], dayfirst=True)
+        expected = expected.reset_index(drop=True)
+        expected['Date'] = expected['Clock'].dt.normalize()
+        c_dt = expected['Clock'].dt
+        ym = c_dt.year * 100 + c_dt.month
+        ym_dict = {v: f'{v // 100:04d}-{v % 100:02d}' for v in ym.unique()}
+        expected['Month'] = ym.map(ym_dict)
+        hm = c_dt.hour * 60 + c_dt.minute
+        hm_dict = {v: f'{v // 60:02d}:{v % 60:02d}' for v in hm.unique()}
+        expected['Time_Str'] = hm.map(hm_dict)
+        expected['kWh_15min'] = expected['kW_Import'] / 4.0
+
+        pd.testing.assert_frame_equal(preprocess_data(df_in), expected)
+
+    def test_preprocess_data_uses_integer_datetime_field_derivation(self):
+        # AST check: ensure the fast integer epoch path (iNaT detection + civil-from-days) exists.
+        import ast
+        handler_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data_handler.py'))
+        with open(handler_path, 'r', encoding='utf-8') as f:
+            tree = ast.parse(f.read())
+
+        found_iinfo = False
+        found_civil_constant = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == 'preprocess_data':
+                for child in ast.walk(node):
+                    if isinstance(child, ast.Attribute) and child.attr == 'iinfo':
+                        found_iinfo = True
+                    if isinstance(child, ast.Constant) and child.value == 146097:
+                        found_civil_constant = True
+        self.assertTrue(found_iinfo, "preprocess_data should detect NaT via the int64 iNaT sentinel")
+        self.assertTrue(found_civil_constant, "preprocess_data should use civil-from-days integer arithmetic")
+
     def test_sanitize_filename_path_traversal(self):
         from data_handler import sanitize_filename
         self.assertEqual(sanitize_filename("../../../../etc/passwd.csv"), "passwd.csv")
@@ -1295,6 +1348,20 @@ class TestDataHandler(unittest.TestCase):
         df_out = preprocess_data(df_input)
         pd.testing.assert_frame_equal(df_out, df_base)
 
+
+    def test_fast_parse_datetime_leading_empty_and_null_samples(self):
+        # ⚡ Bolt: first-format detection must skip empty/whitespace/null leading values
+        # after replacing the full-Series dropna() copy with a notna() count.
+        from data_handler import fast_parse_datetime
+
+        s = pd.Series([
+            "", "   ", None, np.nan,
+            "01/01/2026 00:00", "01/01/2026 00:15", "invalid", None,
+            "01/01/2026 00:45",
+        ])
+        expected = pd.to_datetime(s, dayfirst=True, errors='coerce', format='mixed')
+        actual = fast_parse_datetime(s, dayfirst=True)
+        pd.testing.assert_series_equal(actual, expected)
 
     def test_fast_parse_datetime_dayfirst_false_parity(self):
         """Ensure fast_parse_datetime respects dayfirst=False for MM/DD/YYYY formats without month-day transposition."""
