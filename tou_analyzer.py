@@ -6,9 +6,7 @@ from typing import Any, List, Tuple, Union
 @st.cache_data
 def _apply_tou_and_anomaly_cached(df, sensitivity, p_start, p_end, p_rate, op_rate, holiday_tuple):
     """วิเคราะห์สถานะ TOU (Peak, Off-Peak, Holiday) และตรวจสอบไฟตกไฟเกินตามเงื่อนไขใหม่ (เวอร์ชัน Cache)"""
-    df = df.copy()
-
-    if df.empty:
+    if df is None or df.empty:
         standard_cols = [
             ('Clock', 'datetime64[ns]'),
             ('kW_Import', 'float64'),
@@ -20,12 +18,15 @@ def _apply_tou_and_anomaly_cached(df, sensitivity, p_start, p_end, p_rate, op_ra
             ('Cost_THB', 'float64'),
             ('Anomaly_Type', 'object'),
         ]
+        df_out = pd.DataFrame() if df is None else df.copy()
         for col, dtype in standard_cols:
-            if col not in df.columns:
-                df[col] = pd.Series(dtype=dtype)
-            elif df[col].dtype == object and dtype != 'object':
-                df[col] = df[col].astype(dtype)
-        return df
+            if col not in df_out.columns:
+                df_out[col] = pd.Series(dtype=dtype)
+            elif df_out[col].dtype == object and dtype != 'object':
+                df_out[col] = df_out[col].astype(dtype)
+        return df_out
+
+    df = df.copy()
 
     if 'Clock' not in df.columns:
         df['Clock'] = pd.NaT
@@ -110,11 +111,15 @@ def _apply_tou_and_anomaly_cached(df, sensitivity, p_start, p_end, p_rate, op_ra
         df['kW_Import'] = 0.0
     elif not pd.api.types.is_numeric_dtype(df['kW_Import']):
         df['kW_Import'] = pd.to_numeric(df['kW_Import'], errors='coerce').fillna(0.0)
+    else:
+        df['kW_Import'] = df['kW_Import'].fillna(0.0)
 
     if 'kWh_15min' not in df.columns:
         df['kWh_15min'] = df['kW_Import'] / 4.0
     elif not pd.api.types.is_numeric_dtype(df['kWh_15min']):
         df['kWh_15min'] = pd.to_numeric(df['kWh_15min'], errors='coerce').fillna(0.0)
+    else:
+        df['kWh_15min'] = df['kWh_15min'].fillna(0.0)
 
     df['Cost_THB'] = df['kWh_15min'] * df['Rate_THB']
 
