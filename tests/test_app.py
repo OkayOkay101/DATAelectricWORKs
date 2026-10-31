@@ -553,3 +553,81 @@ class TestApp(unittest.TestCase):
         finally:
             if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
                 sys.modules['streamlit'] = mock_st
+
+    def test_tab2_daily_insights_shows_day_type_and_tou_context(self):
+        """แท็บ 2 (เจาะลึกรายวัน) ต้องแสดงชื่อวันภาษาไทย ประเภทวัน (วันทำงาน/วันหยุด) และเงื่อนไขอัตราค่าไฟ TOU อย่างชัดเจน"""
+        import sys
+        mock_st = None
+        if 'streamlit' in sys.modules and not hasattr(sys.modules['streamlit'], '__path__'):
+            mock_st = sys.modules.pop('streamlit')
+
+        try:
+            from streamlit.testing.v1 import AppTest
+            import os
+            import io
+            import datetime
+
+            app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.py')
+            at = AppTest.from_file(app_path, default_timeout=30).run()
+
+            # Data with 3 different day types:
+            # 2026-01-01 (Thursday, Holiday)
+            # 2026-01-03 (Saturday, Weekend)
+            # 2026-01-05 (Monday, Weekday)
+            df = pd.DataFrame({
+                'Clock': [
+                    '2026-01-01 10:00:00',
+                    '2026-01-03 10:00:00',
+                    '2026-01-05 10:00:00',
+                ],
+                'kW_Import': [100.0, 100.0, 100.0],
+                'Voltage': [220.0, 220.0, 220.0],
+            })
+            buffer = io.BytesIO()
+            df.to_csv(buffer, index=False)
+            at.file_uploader[0].set_value([('days_test.csv', buffer.getvalue(), 'text/csv')]).run()
+            self.assertFalse(at.exception, f'App execution failed: {at.exception}')
+
+            # 1. Default selected date: 2026-01-01 (Thursday, Public Holiday)
+            holiday_cards = [inf.value for inf in at.info if 'วันหยุดนักขัตฤกษ์' in inf.value]
+            self.assertEqual(len(holiday_cards), 1, 'Expected holiday context card in Tab 2 for 2026-01-01')
+            self.assertIn('วันพฤหัสบดี', holiday_cards[0])
+            self.assertIn('01/01/2026', holiday_cards[0])
+            self.assertIn('Off-Peak/Holiday', holiday_cards[0])
+            self.assertIn('ไม่มีช่วง On-Peak', holiday_cards[0])
+
+            # 2. Switch date to 2026-01-05 (Monday, Weekday)
+            date_selector = next(sb for sb in at.selectbox if 'เลือกวันที่ต้องการเจาะลึก' in sb.label)
+            date_selector.set_value(datetime.date(2026, 1, 5)).run()
+            self.assertFalse(at.exception, f'App execution failed on date switch: {at.exception}')
+
+            weekday_cards = [inf.value for inf in at.info if 'วันทำงานปกติ' in inf.value]
+            self.assertEqual(len(weekday_cards), 1, 'Expected weekday context card in Tab 2 for 2026-01-05')
+            self.assertIn('วันจันทร์', weekday_cards[0])
+            self.assertIn('05/01/2026', weekday_cards[0])
+            self.assertIn('On-Peak', weekday_cards[0])
+            self.assertIn('09:00–22:00', weekday_cards[0])
+
+            # 3. Switch date to 2026-01-03 (Saturday, Weekend)
+            date_selector = next(sb for sb in at.selectbox if 'เลือกวันที่ต้องการเจาะลึก' in sb.label)
+            date_selector.set_value(datetime.date(2026, 1, 3)).run()
+            self.assertFalse(at.exception, f'App execution failed on date switch: {at.exception}')
+
+            weekend_cards = [inf.value for inf in at.info if 'วันหยุดสุดสัปดาห์' in inf.value]
+            self.assertEqual(len(weekend_cards), 1, 'Expected weekend context card in Tab 2 for 2026-01-03')
+            self.assertIn('วันเสาร์', weekend_cards[0])
+            self.assertIn('03/01/2026', weekend_cards[0])
+            self.assertIn('ไม่มีช่วง On-Peak', weekend_cards[0])
+
+            # 4. Switch to Single Rate
+            rate_radio = next(r for r in at.radio if 'ประเภทอัตราค่าไฟ' in r.label)
+            rate_radio.set_value('อัตราเดียว (Single Rate)').run()
+            self.assertFalse(at.exception, f'App execution failed on rate switch: {at.exception}')
+
+            single_rate_cards = [inf.value for inf in at.info if 'คิดอัตราเดียว (Single Rate)' in inf.value]
+            self.assertEqual(len(single_rate_cards), 1, 'Expected single rate context card in Tab 2')
+            self.assertIn('คิดเรทคงที่', single_rate_cards[0])
+        finally:
+            if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
+                sys.modules['streamlit'] = mock_st
+

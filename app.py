@@ -399,12 +399,41 @@ with tab1:
 with tab2:
     available_dates = [pd.Timestamp(d).date() for d in sorted(df_display['Date'].unique())]
     if available_dates:
-        col_d1, col_d2 = st.columns([1, 3])
+        col_d1, col_d2 = st.columns([1, 2])
         with col_d1: sel_date = st.selectbox("📅 เลือกวันที่ต้องการเจาะลึก", available_dates)
         day_df = df_display[df_display['Date'] == pd.Timestamp(sel_date)].copy()
 
+        with col_d2:
+            sel_dt = pd.Timestamp(sel_date)
+            thai_weekdays = ["วันจันทร์", "วันอังคาร", "วันพุธ", "วันพฤหัสบดี", "วันศุกร์", "วันเสาร์", "วันอาทิตย์"]
+            day_name = thai_weekdays[sel_dt.weekday()]
+            is_holiday = bool(day_df['Is_Holiday'].iloc[0]) if ('Is_Holiday' in day_df.columns and not day_df.empty) else False
+            is_weekend = bool(day_df['Is_Weekend'].iloc[0]) if ('Is_Weekend' in day_df.columns and not day_df.empty) else False
+
+            if rate_type == "TOU (Time of Use)":
+                if is_holiday:
+                    st.info(
+                        f"🟡 **{day_name} ({sel_dt:%d/%m/%Y}) • วันหยุดนักขัตฤกษ์ (Holiday)**\n\n"
+                        f"คิดเรท Off-Peak/Holiday ({op_rate:.4f} บาท/หน่วย) ตลอด 24 ชม. (ไม่มีช่วง On-Peak)"
+                    )
+                elif is_weekend:
+                    st.info(
+                        f"🟢 **{day_name} ({sel_dt:%d/%m/%Y}) • วันหยุดสุดสัปดาห์ (Weekend)**\n\n"
+                        f"คิดเรท Off-Peak ({op_rate:.4f} บาท/หน่วย) ตลอด 24 ชม. (ไม่มีช่วง On-Peak)"
+                    )
+                else:
+                    st.info(
+                        f"🔴 **{day_name} ({sel_dt:%d/%m/%Y}) • วันทำงานปกติ (Weekday)**\n\n"
+                        f"ช่วง On-Peak ({p_rate:.4f} บาท/หน่วย) เวลา {p_start:%H:%M}–{p_end:%H:%M} • นอกช่วงเวลาคิด Off-Peak ({op_rate:.4f} บาท/หน่วย)"
+                    )
+            else:
+                st.info(
+                    f"⚡ **{day_name} ({sel_dt:%d/%m/%Y}) • คิดอัตราเดียว (Single Rate)**\n\n"
+                    f"คิดเรทคงที่ ({single_rate:.4f} บาท/หน่วย) ตลอด 24 ชม."
+                )
+
         with st.container(border=True):
-            st.markdown(f"#### 📊 สรุปภาพรวมพลังงานประจำวันที่ {sel_date}")
+            st.markdown(f"#### 📊 สรุปภาพรวมพลังงานประจำวันที่ {sel_date} ({day_name})")
             m_col1, m_col2, m_col3, m_col4 = st.columns(4)
             peak_day_kw = day_df['kW_Import'].max() if not day_df.empty else 0.0
             total_day_kwh = day_df['kWh_15min'].sum() if not day_df.empty else 0.0
