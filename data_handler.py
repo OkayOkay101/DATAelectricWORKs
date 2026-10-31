@@ -644,31 +644,46 @@ def parse_excel_df(df_raw):
     # Since load profiles have low distinct cardinalities (only ~96 unique times, ~2000 unique dates),
     # evaluating validity on unique values and mapping back eliminates redundant allocations.
     # Slicing only required series avoids copying the entire DataFrame of unused columns.
+    # ⚡ Bolt Optimization: Skip the costly Series.unique() cardinality probe for fixed-width
+    # timestamp columns (len 16/19), which are high-cardinality by nature (one slot per row).
+    # Series.unique() costs ~17ms per 200k rows and only existed to choose between two equivalent
+    # filtering paths. Load profiles read from CSV/Excel store timestamps as plain Python str.
     re_clock = re.compile(invalid_clock_pattern)
-    u_c = clock_series.unique()
-    if len(u_c) <= len(clock_series) * 0.5:
-        map_c = {}
-        for v in u_c:
-            if pd.isna(v):
-                map_c[v] = False
-            else:
-                s = str(v).strip().lower()
-                map_c[v] = False if (not s or (s[0] in 'tpohknd' and re_clock.match(s))) else True
-        mask_c = clock_series.map(map_c).fillna(False).astype(bool)
-    else:
+    sample_val = None
+    for v in clock_series.iloc[:20]:
+        if pd.notna(v):
+            s_val = v if type(v) is str else str(v)
+            if s_val.strip():
+                sample_val = v
+                break
+    use_byte_gate = type(sample_val) is str and len(sample_val) in (16, 19)
+
+    mask_c = None
+    if not use_byte_gate:
+        u_c = clock_series.unique()
+        if len(u_c) <= len(clock_series) * 0.5:
+            map_c = {}
+            for v in u_c:
+                if pd.isna(v):
+                    map_c[v] = False
+                else:
+                    s = str(v).strip().lower()
+                    map_c[v] = False if (not s or (s[0] in 'tpohknd' and re_clock.match(s))) else True
+            mask_c = clock_series.map(map_c).fillna(False).astype(bool)
+
+    if mask_c is None:
         # ⚡ Bolt Optimization: High-cardinality clock columns (one unique timestamp per row)
-        # bypass the unique-map path and previously ran full-series .astype(str).str.strip()
-        # .str.lower().str.contains(regex) on every row (~94ms per 200k rows).
-        # Every invalid pattern starts with an ASCII letter t/p/o/h/k/n/d, whitespace, or is empty,
-        # so a vectorized first-byte check on a fixed-width byte buffer lets the regex run only on
-        # the tiny candidate subset while preserving exact behavior (including Thai/other text).
+        # previously ran full-series .astype(str).str.strip() .str.lower() .str.contains(regex)
+        # on every row (~94ms per 200k rows). Every invalid pattern starts with an ASCII letter
+        # t/p/o/h/k/n/d, whitespace, control bytes, or (after strip) non-ASCII whitespace, so a
+        # vectorized first-byte check on a fixed-width byte buffer lets the regex run only on the
+        # tiny candidate subset. Non-ASCII bytes are candidates so Unicode whitespace before a
+        # footer keyword is still stripped and matched.
         try:
             clock_bytes = clock_series.fillna('').to_numpy(dtype='S19')
             first_byte = clock_bytes.view('uint8').reshape(len(clock_bytes), 19)[:, 0]
-            candidate_bytes = np.array(
-                list(range(0, 33)) + [ord(ch) for ch in 'tpohkndTPOHKND'], dtype='uint8'
-            )
-            is_candidate = np.isin(first_byte, candidate_bytes)
+            trigger_bytes = np.frombuffer(b'tpohkndTPOHKND', dtype='uint8')
+            is_candidate = (first_byte <= 32) | (first_byte >= 128) | np.isin(first_byte, trigger_bytes)
             valid_arr = np.ones(len(clock_series), dtype=bool)
             if is_candidate.any():
                 c_clean = clock_series[is_candidate].fillna('').astype(str).str.strip().str.lower()
