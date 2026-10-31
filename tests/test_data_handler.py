@@ -1788,5 +1788,56 @@ class TestSafeErrorReason(unittest.TestCase):
             load_file(OversizedFile(), "csv")
 
 
+class TestDataHandlerEdgeCases(unittest.TestCase):
+
+    def test_sort_and_deduplicate_by_clock_none_and_empty(self):
+        """sort_and_deduplicate_by_clock must handle None and empty DataFrame safely without raising."""
+        from data_handler import sort_and_deduplicate_by_clock
+        self.assertIsNone(sort_and_deduplicate_by_clock(None))
+
+        empty_df = pd.DataFrame()
+        res_empty = sort_and_deduplicate_by_clock(empty_df)
+        self.assertIsInstance(res_empty, pd.DataFrame)
+        self.assertTrue(res_empty.empty)
+
+    def test_sort_and_deduplicate_by_clock_missing_columns(self):
+        """sort_and_deduplicate_by_clock must handle missing Clock or kW_Import columns gracefully."""
+        from data_handler import sort_and_deduplicate_by_clock
+        # Missing kW_Import: sort and deduplicate by Clock only
+        dates = pd.to_datetime(['2026-01-01 00:15', '2026-01-01 00:00', '2026-01-01 00:15'])
+        df_clock_only = pd.DataFrame({'Clock': dates, 'Voltage': [220, 221, 222]})
+        res_clock_only = sort_and_deduplicate_by_clock(df_clock_only)
+        self.assertEqual(len(res_clock_only), 2)
+        self.assertEqual(res_clock_only['Clock'].tolist(), [pd.Timestamp('2026-01-01 00:00'), pd.Timestamp('2026-01-01 00:15')])
+
+        # Missing Clock: cannot sort/deduplicate by Clock, return copy without KeyError
+        df_no_clock = pd.DataFrame({'kW_Import': [10.0, 20.0]})
+        res_no_clock = sort_and_deduplicate_by_clock(df_no_clock)
+        self.assertEqual(len(res_no_clock), 2)
+        self.assertNotIn('Clock', res_no_clock.columns)
+
+    def test_get_usage_snapshots_string_and_non_numeric_kw(self):
+        """get_usage_snapshots must handle string or object kW_Import without raising TypeError."""
+        df_str_kw = pd.DataFrame({
+            'Clock': pd.date_range('2026-01-01 00:00', periods=5, freq='15min'),
+            'kW_Import': ['0.0', '15.5', '20.0', '0.0', '0.0']
+        })
+        snapshots = get_usage_snapshots(df_str_kw)
+        self.assertEqual(len(snapshots), 1)
+        self.assertEqual(snapshots[0]['start_idx'], 0)
+        self.assertEqual(snapshots[0]['end_idx'], 3)
+
+    def test_get_usage_snapshots_nat_clock_formatting(self):
+        """get_usage_snapshots must format NaT timestamps as 'NaT' instead of corrupted '//T 00:00'."""
+        df_nat = pd.DataFrame({
+            'Clock': [pd.NaT, pd.NaT],
+            'kW_Import': [10.0, 0.0]
+        })
+        snapshots = get_usage_snapshots(df_nat)
+        self.assertEqual(len(snapshots), 1)
+        self.assertNotIn('//T', snapshots[0]['label'])
+        self.assertIn('NaT', snapshots[0]['label'])
+
+
 if __name__ == '__main__':
     unittest.main()
