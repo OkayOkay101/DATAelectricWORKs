@@ -593,7 +593,10 @@ with tab3:
     else:
         plot_old = df_display[df_display['Date'] == pd.Timestamp(view_date)].sort_values('Clock')
         plot_new = df_new_recalc[df_new_recalc['Original_Clock'].dt.normalize() == pd.Timestamp(view_date)].sort_values('Clock')
-        title_text = f"กราฟเส้นเปรียบเทียบข้อมูลเดิม เทียบกับ ข้อมูลใหม่ ประจำวันที่ {view_date}"
+        sel_dt = pd.Timestamp(view_date)
+        thai_weekdays = ["วันจันทร์", "วันอังคาร", "วันพุธ", "วันพฤหัสบดี", "วันศุกร์", "วันเสาร์", "วันอาทิตย์"]
+        day_name = thai_weekdays[sel_dt.weekday()]
+        title_text = f"กราฟเส้นเปรียบเทียบข้อมูลเดิม เทียบกับ ข้อมูลใหม่ ประจำวันที่ {sel_dt:%d/%m/%Y} ({day_name})"
 
     peak_old = plot_old['kW_Import'].max() if not plot_old.empty else 0.0
     peak_new = plot_new['kW_Import'].max() if not plot_new.empty else 0.0
@@ -617,13 +620,24 @@ with tab3:
             delta_color="inverse",
             help="กำลังไฟฟ้าสูงสุดหลังเลื่อนเวลา เทียบกับก่อนเลื่อน (เดิม: {:,.2f} kW)".format(peak_old)
         )
-        mc2.metric(
-            "⚡ พลังงานช่วง On-Peak",
-            f"{onpeak_new:,.2f} kWh",
-            delta=f"{diff_onpeak:,.2f} kWh",
-            delta_color="inverse",
-            help="ปริมาณพลังงาน On-Peak หลังเลื่อนเวลา เทียบกับก่อนเลื่อน (เดิม: {:,.2f} kWh)".format(onpeak_old)
-        )
+        if rate_type == "TOU (Time of Use)":
+            mc2.metric(
+                "⚡ พลังงานช่วง On-Peak",
+                f"{onpeak_new:,.2f} kWh",
+                delta=f"{diff_onpeak:,.2f} kWh",
+                delta_color="inverse",
+                help="ปริมาณพลังงาน On-Peak หลังเลื่อนเวลา เทียบกับก่อนเลื่อน (เดิม: {:,.2f} kWh)".format(onpeak_old)
+            )
+        else:
+            total_kwh_old = plot_old['kWh_15min'].sum() if not plot_old.empty else 0.0
+            total_kwh_new = plot_new['kWh_15min'].sum() if not plot_new.empty else 0.0
+            diff_total_kwh = total_kwh_new - total_kwh_old
+            mc2.metric(
+                "⚡ พลังงานรวม (Total kWh)",
+                f"{total_kwh_new:,.2f} kWh",
+                delta=f"{diff_total_kwh:,.2f} kWh" if abs(diff_total_kwh) > 0.005 else None,
+                help="ปริมาณพลังงานไฟฟ้ารวม (อัตราเดียวไม่มีช่วง On-Peak)"
+            )
         mc3.metric(
             "💰 ค่าไฟฟ้าประเมินเปรียบเทียบ",
             f"฿ {cost_new:,.2f}",
@@ -636,6 +650,23 @@ with tab3:
             f"{shift_minutes:+d} นาที" if shift_minutes != 0 else "0 นาที (เวลาเดิม)",
             help="ระยะเวลาที่เลื่อน (ค่าบวก=เลื่อนไปข้างหน้า, ค่าลบ=ถอยหลัง)"
         )
+
+        pct_change = (abs(diff_cost) / cost_old * 100) if cost_old > 0 else 0.0
+        if shift_minutes == 0:
+            st.info("ℹ️ **ผลการจำลอง:** เวลาจำลองเป็น 0 นาที (เวลาเดิม) ปรับเปลี่ยนจำนวนนาทีเพื่อประเมินผลกระทบต่อค่าไฟและโหลด On-Peak")
+        elif rate_type == "TOU (Time of Use)":
+            if diff_cost < -0.005:
+                st.success(f"🎉 **ผลการจำลอง:** ประหยัดค่าไฟฟ้าได้ **฿ {abs(diff_cost):,.2f}** (ลดลง **{pct_change:.2f}%**) จากการเลื่อนเวลา {shift_minutes:+d} นาที")
+            elif diff_cost > 0.005:
+                st.warning(f"⚠️ **ผลการจำลอง:** ค่าไฟฟ้าเพิ่มขึ้น **฿ {diff_cost:,.2f}** (เพิ่มขึ้น **{pct_change:.2f}%**) จากการเลื่อนเวลา {shift_minutes:+d} นาที (ควรพิจารณาปรับช่วงเวลาใหม่)")
+            else:
+                st.info(f"ℹ️ **ผลการจำลอง:** ค่าไฟฟ้าคงเดิม ไม่มีการเปลี่ยนแปลง (ผลต่าง ฿ 0.00) จากการเลื่อนเวลา {shift_minutes:+d} นาที")
+        else:
+            st.info(
+                f"⚡ **ผลการจำลอง (อัตราคงที่):** ค่าไฟฟ้าคงเดิม (ผลต่าง ฿ 0.00) "
+                f"เนื่องจากคิดเรทอัตราเดียว ({single_rate:.4f} บาท/หน่วย) ตลอด 24 ชม. "
+                f"(หากต้องการประเมินการประหยัดค่าไฟจากการย้ายโหลด On-Peak กรุณาเลือก 'TOU' ที่เมนูด้านซ้าย)"
+            )
 
     fig_compare = go.Figure()
     fig_compare.add_trace(go.Scatter(x=plot_old['Clock'], y=plot_old['kW_Import'], mode='lines+markers', name='เก่า (Original)', line=dict(color='#1d3557', width=3)))
