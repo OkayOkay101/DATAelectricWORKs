@@ -530,6 +530,77 @@ class TestDataHandler(unittest.TestCase):
             validate_upload_batch(files)
         self.assertIn("ขนาดไฟล์รวมเกินกำหนด", str(ctx.exception))
 
+    def test_get_upload_size_does_not_trust_understated_positive_size(self):
+        import io
+        from data_handler import get_upload_size
+
+        class MockSeekableUnderstatedStream(io.BytesIO):
+            def __init__(self, content, declared_size, virtual_size):
+                super().__init__(content)
+                self.size = declared_size
+                self.virtual_size = virtual_size
+                self._virtual_pos = None
+
+            def __getattribute__(self, name):
+                if name == 'getbuffer':
+                    raise AttributeError("No getbuffer")
+                return super().__getattribute__(name)
+
+            def seek(self, offset, whence=io.SEEK_SET):
+                if whence == io.SEEK_END and self.virtual_size is not None:
+                    self._virtual_pos = self.virtual_size + offset
+                    return self._virtual_pos
+                self._virtual_pos = None
+                return super().seek(offset, whence)
+
+            def tell(self):
+                if getattr(self, '_virtual_pos', None) is not None:
+                    return self._virtual_pos
+                return super().tell()
+
+        stream = MockSeekableUnderstatedStream(b"sample", declared_size=1, virtual_size=4096)
+        self.assertEqual(
+            get_upload_size(stream), 4096,
+            "Declared size must not hide the real stream length"
+        )
+
+    def test_load_file_rejects_oversized_file_with_understated_positive_size(self):
+        import io
+        from data_handler import load_file, UploadValidationError, MAX_FILE_SIZE_BYTES
+
+        class MockSeekableUnderstatedStream(io.BytesIO):
+            def __init__(self, content, declared_size, virtual_size):
+                super().__init__(content)
+                self.size = declared_size
+                self.virtual_size = virtual_size
+                self._virtual_pos = None
+
+            def __getattribute__(self, name):
+                if name == 'getbuffer':
+                    raise AttributeError("No getbuffer")
+                return super().__getattribute__(name)
+
+            def seek(self, offset, whence=io.SEEK_SET):
+                if whence == io.SEEK_END and self.virtual_size is not None:
+                    self._virtual_pos = self.virtual_size + offset
+                    return self._virtual_pos
+                self._virtual_pos = None
+                return super().seek(offset, whence)
+
+            def tell(self):
+                if getattr(self, '_virtual_pos', None) is not None:
+                    return self._virtual_pos
+                return super().tell()
+
+        oversized_stream = MockSeekableUnderstatedStream(
+            b"Clock,kW_Import,Voltage\n01/01/2026 00:00,100,220\n",
+            declared_size=1,
+            virtual_size=MAX_FILE_SIZE_BYTES + 2048
+        )
+        with self.assertRaises(UploadValidationError) as ctx:
+            load_file(oversized_stream, "csv")
+        self.assertIn("ขนาดไฟล์เกินกำหนด", str(ctx.exception))
+
     def test_app_enforces_upload_batch_limits(self):
         import ast
         app_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'app.py'))

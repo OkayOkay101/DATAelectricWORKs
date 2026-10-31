@@ -147,23 +147,28 @@ def get_upload_size(uploaded_file):
     รองรับทั้งออบเจกต์ที่มี attribute size (Streamlit UploadedFile), file-like ที่มี getbuffer()
     และ stream ที่รองรับ seek/tell (เช่น TemporaryFile, BufferedReader)
     ไม่ยอมรับค่าขนาดติดลบ (เช่น -1 จาก chunked transfer หรือการปลอมแปลง) และจะตรวจหาขนาดจริงจาก stream
+    โดยใช้ค่าที่มากกว่าระหว่างขนาดที่ประกาศไว้กับขนาดจริง เพื่อกันการประกาศขนาดต่ำกว่าความจริง
     """
+    declared_size = None
     size = getattr(uploaded_file, 'size', None)
     if size is not None:
         try:
             val = int(size)
             if val >= 0:
-                return val
+                declared_size = val
         except (TypeError, ValueError):
             pass
+
+    actual_size = None
     if hasattr(uploaded_file, 'getbuffer'):
         try:
             val = uploaded_file.getbuffer().nbytes
             if val >= 0:
-                return int(val)
+                actual_size = int(val)
         except Exception:
             pass
-    if hasattr(uploaded_file, 'seek') and hasattr(uploaded_file, 'tell'):
+
+    if actual_size is None and hasattr(uploaded_file, 'seek') and hasattr(uploaded_file, 'tell'):
         try:
             curr_pos = uploaded_file.tell()
             uploaded_file.seek(0, io.SEEK_END)
@@ -171,14 +176,20 @@ def get_upload_size(uploaded_file):
             uploaded_file.seek(curr_pos)
             val = int(end_pos)
             if val >= 0:
-                return val
+                actual_size = val
         except Exception:
             try:
                 uploaded_file.seek(0)
             except Exception:
                 pass
-            return None
-    return None
+
+    # ใช้ค่าที่มากกว่าระหว่างขนาดที่ประกาศไว้กับขนาดจริงจาก stream
+    # เพื่อไม่ให้ค่า size ที่ถูกทำให้เล็กลงหลอกให้ผ่านการจำกัดขนาดไฟล์ได้
+    if declared_size is not None and actual_size is not None:
+        return max(declared_size, actual_size)
+    if declared_size is not None:
+        return declared_size
+    return actual_size
 
 
 def validate_upload_batch(uploaded_files):
