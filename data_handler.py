@@ -709,9 +709,9 @@ def fast_parse_datetime(series, dayfirst=True):
                 out = np.empty((n, 16), dtype='uint8')
                 out[:, 0:4] = b[:, 6:10] # YYYY
                 out[:, 4] = ord('-')
-                out[:, 5:7] = b[:, 3:5]  # MM
+                out[:, 5:7] = b[:, 3:5] if dayfirst else b[:, 0:2]  # MM
                 out[:, 7] = ord('-')
-                out[:, 8:10] = b[:, 0:2] # DD
+                out[:, 8:10] = b[:, 0:2] if dayfirst else b[:, 3:5] # DD
                 out[:, 10] = ord('T')
                 out[:, 11:16] = b[:, 11:16] # HH:MM
 
@@ -753,9 +753,9 @@ def fast_parse_datetime(series, dayfirst=True):
                 out = np.empty((n, 19), dtype='uint8')
                 out[:, 0:4] = b[:, 6:10] # YYYY
                 out[:, 4] = ord('-')
-                out[:, 5:7] = b[:, 3:5]  # MM
+                out[:, 5:7] = b[:, 3:5] if dayfirst else b[:, 0:2]  # MM
                 out[:, 7] = ord('-')
-                out[:, 8:10] = b[:, 0:2] # DD
+                out[:, 8:10] = b[:, 0:2] if dayfirst else b[:, 3:5] # DD
                 out[:, 10] = ord('T')
                 out[:, 11:19] = b[:, 11:19] # HH:MM:SS
 
@@ -791,15 +791,28 @@ def fast_parse_datetime(series, dayfirst=True):
     if parsed is not None:
         return parsed
 
-    candidates = list(COMMON_DATETIME_FORMATS)
+    if not dayfirst:
+        candidates = [
+            fmt.replace("%d/%m/%Y", "%m/%d/%Y")
+               .replace("%d-%m-%Y", "%m-%d-%Y")
+               .replace("%d/%m/%y", "%m/%d/%y")
+               .replace("%d-%m-%y", "%m-%d-%y")
+               .replace("%d/%m", "%m/%d")
+            for fmt in COMMON_DATETIME_FORMATS
+        ]
+    else:
+        candidates = list(COMMON_DATETIME_FORMATS)
+
     if "-" in first_val and len(first_val) >= 4 and first_val[:4].isdigit():
         candidates.sort(key=lambda fmt: 0 if fmt.startswith("%Y-%m-%d") else 1)
     elif "/" in first_val and len(first_val) >= 4 and first_val[:4].isdigit():
         candidates.sort(key=lambda fmt: 0 if fmt.startswith("%Y/%m/%d") else 1)
     elif "/" in first_val:
-        candidates.sort(key=lambda fmt: 0 if fmt.startswith("%d/%m/%Y") else 1)
+        prefix = "%d/%m/%Y" if dayfirst else "%m/%d/%Y"
+        candidates.sort(key=lambda fmt: 0 if fmt.startswith(prefix) else 1)
     elif "-" in first_val:
-        candidates.sort(key=lambda fmt: 0 if fmt.startswith("%d-%m-%Y") else 1)
+        prefix = "%d-%m-%Y" if dayfirst else "%m-%d-%Y"
+        candidates.sort(key=lambda fmt: 0 if fmt.startswith(prefix) else 1)
 
     for fmt in candidates:
         try:

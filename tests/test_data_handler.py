@@ -1296,5 +1296,51 @@ class TestDataHandler(unittest.TestCase):
         pd.testing.assert_frame_equal(df_out, df_base)
 
 
+    def test_fast_parse_datetime_dayfirst_false_parity(self):
+        """Ensure fast_parse_datetime respects dayfirst=False for MM/DD/YYYY formats without month-day transposition."""
+        from data_handler import fast_parse_datetime
+
+        # 1. 16-char MM/DD/YYYY and MM-DD-YYYY
+        s_slash_16 = pd.Series(['03/05/2026 10:00', '12/01/2026 23:45'])
+        expected_slash_16 = pd.to_datetime(s_slash_16, format='%m/%d/%Y %H:%M', errors='coerce')
+        actual_slash_16 = fast_parse_datetime(s_slash_16, dayfirst=False)
+        self.assertEqual(actual_slash_16.iloc[0], pd.Timestamp('2026-03-05 10:00:00'))
+        self.assertEqual(actual_slash_16.iloc[1], pd.Timestamp('2026-12-01 23:45:00'))
+        pd.testing.assert_series_equal(actual_slash_16, expected_slash_16)
+
+        s_hyphen_16 = pd.Series(['03-05-2026 10:00', '12-01-2026 23:45'])
+        expected_hyphen_16 = pd.to_datetime(s_hyphen_16, format='%m-%d-%Y %H:%M', errors='coerce')
+        actual_hyphen_16 = fast_parse_datetime(s_hyphen_16, dayfirst=False)
+        self.assertEqual(actual_hyphen_16.iloc[0], pd.Timestamp('2026-03-05 10:00:00'))
+        self.assertEqual(actual_hyphen_16.iloc[1], pd.Timestamp('2026-12-01 23:45:00'))
+        pd.testing.assert_series_equal(actual_hyphen_16, expected_hyphen_16)
+
+        # 2. 19-char MM/DD/YYYY and MM-DD-YYYY with seconds
+        s_slash_19 = pd.Series(['03/05/2026 10:00:00', '12/01/2026 23:45:30'])
+        expected_slash_19 = pd.to_datetime(s_slash_19, format='%m/%d/%Y %H:%M:%S', errors='coerce')
+        actual_slash_19 = fast_parse_datetime(s_slash_19, dayfirst=False)
+        self.assertEqual(actual_slash_19.iloc[0], pd.Timestamp('2026-03-05 10:00:00'))
+        pd.testing.assert_series_equal(actual_slash_19, expected_slash_19)
+
+        s_hyphen_19 = pd.Series(['03-05-2026 10:00:00', '12-01-2026 23:45:30'])
+        expected_hyphen_19 = pd.to_datetime(s_hyphen_19, format='%m-%d-%Y %H:%M:%S', errors='coerce')
+        actual_hyphen_19 = fast_parse_datetime(s_hyphen_19, dayfirst=False)
+        self.assertEqual(actual_hyphen_19.iloc[0], pd.Timestamp('2026-03-05 10:00:00'))
+        pd.testing.assert_series_equal(actual_hyphen_19, expected_hyphen_19)
+
+        # 3. Date-only candidate path (e.g. MM/DD/YYYY without time)
+        s_date_only = pd.Series(['03/05/2026', '12/01/2026'])
+        expected_date_only = pd.to_datetime(s_date_only, format='%m/%d/%Y', errors='coerce')
+        actual_date_only = fast_parse_datetime(s_date_only, dayfirst=False)
+        self.assertEqual(actual_date_only.iloc[0], pd.Timestamp('2026-03-05'))
+        pd.testing.assert_series_equal(actual_date_only, expected_date_only)
+
+        # 4. Mixed valid, invalid, and missing values with dayfirst=False
+        s_mixed = pd.Series(['03/05/2026 10:00', None, '', 'invalid_text', '12/01/2026 23:45'])
+        expected_mixed = pd.to_datetime(s_mixed, dayfirst=False, errors='coerce', format='mixed')
+        actual_mixed = fast_parse_datetime(s_mixed, dayfirst=False)
+        pd.testing.assert_series_equal(actual_mixed, expected_mixed)
+
+
 if __name__ == '__main__':
     unittest.main()
