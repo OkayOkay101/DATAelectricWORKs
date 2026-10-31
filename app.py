@@ -146,8 +146,19 @@ if not uploaded_files:
     st.stop()
 
 # --- Data Processing ---
+def _render_skipped_files_notice(skipped_files):
+    """แจ้งอย่างถาวรว่าไฟล์ใดถูกข้าม พร้อมสาเหตุและวิธีแก้ (ไม่ใช่แค่ toast ที่หายไป)"""
+    details = "\n".join(f"- `{name}`: {reason}" for name, reason in skipped_files)
+    st.warning(
+        f"⚠️ ข้ามไฟล์ที่อ่านไม่ได้ {len(skipped_files)} ไฟล์\n\n"
+        f"{details}\n\n"
+        "**วิธีแก้:** ตรวจสอบว่าภายในไฟล์มีคอลัมน์วัน-เวลา (Clock / Date / Time) "
+        "และกำลังไฟฟ้า (kW) ตามแม่แบบในหน้าแรก แล้วอัปโหลดไฟล์นั้นอีกครั้ง"
+    )
+
 with st.spinner('🔄 กำลังโหลด ประมวลผล และเชื่อมต่อข้อมูล...'):
     all_dfs = []
+    skipped_files = []
     for file in uploaded_files:
         safe_filename = sanitize_filename(getattr(file, 'name', ''))
         file_ext = safe_filename.rsplit('.', 1)[-1].lower() if '.' in safe_filename else ''
@@ -157,24 +168,40 @@ with st.spinner('🔄 กำลังโหลด ประมวลผล แ�
             if not df_base.empty and 'Clock' in df_base.columns:
                 all_dfs.append(df_base)
             else:
+                skipped_files.append((safe_filename, "ไม่พบข้อมูลวัน-เวลาในไฟล์"))
                 st.toast(f"⚠️ ข้ามไฟล์ '{safe_filename}' (ไม่มีข้อมูลเวลา)", icon="⚠️")
         except Exception as e:
             logging.error(f"Error reading file '{safe_filename}': {e}", exc_info=True)
+            reason = str(e).strip() if isinstance(e, ValueError) else "รูปแบบไฟล์ไม่รองรับ หรือไฟล์อาจเสียหาย"
+            skipped_files.append((safe_filename, reason))
             st.toast(f"❌ อ่านไฟล์ '{safe_filename}' ไม่ได้", icon="❌")
 
     if not all_dfs:
         st.error("⚠️ ไม่มีข้อมูลที่สามารถนำมาวิเคราะห์ได้เลย โปรดตรวจสอบไฟล์ที่อัปโหลด")
+        if skipped_files:
+            _render_skipped_files_notice(skipped_files)
         st.stop()
 
     df_combined = pd.concat(all_dfs, ignore_index=True)
     num_files = len(all_dfs)
+    total_files = len(uploaded_files)
     del all_dfs
     df_combined = df_combined.sort_values(['Clock', 'kW_Import'], ascending=[True, False]).drop_duplicates(subset=['Clock'], keep='first').reset_index(drop=True)
     
     df_master = apply_tou_and_anomaly(df_combined, sensitivity, p_start, p_end, p_rate, op_rate, holiday_list)
     snapshots = get_usage_snapshots(df_master)
-    
-st.success(f"✅ วิเคราะห์ข้อมูลสำเร็จ {num_files} ไฟล์")
+
+if skipped_files:
+    _render_skipped_files_notice(skipped_files)
+    st.success(f"✅ วิเคราะห์ข้อมูลสำเร็จ {num_files} จาก {total_files} ไฟล์")
+else:
+    st.success(f"✅ วิเคราะห์ข้อมูลสำเร็จ {num_files} ไฟล์")
+
+if not df_master.empty:
+    st.caption(
+        f"📅 ข้อมูลที่อ่านได้: {df_master['Clock'].min():%d/%m/%Y %H:%M} ถึง "
+        f"{df_master['Clock'].max():%d/%m/%Y %H:%M} • {len(df_master):,} แถว"
+    )
 
 # --- Snapshot Selector (Filter) ---
 with st.container(border=True):
