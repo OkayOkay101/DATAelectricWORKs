@@ -96,6 +96,57 @@ class TestApp(unittest.TestCase):
         self.assertEqual(df_sim.iloc[0]['Clock'], pd.Timestamp('2024-01-02 00:30:00'), "Clock did not shift correctly")
         self.assertEqual(df_sim.iloc[0]['Date'], pd.Timestamp('2024-01-02'), "Date did not update to match Clock across day boundary")
 
+    def test_load_kw_is_reported_as_peak_not_interval_sum(self):
+        """'โหลด' ต้องเป็นค่า kW สูงสุด ไม่ใช่ผลบวก kW ของทุกช่วงเวลา (ซึ่งไม่มีความหมาย)"""
+        import sys
+        mock_st = None
+        if 'streamlit' in sys.modules and not hasattr(sys.modules['streamlit'], '__path__'):
+            mock_st = sys.modules.pop('streamlit')
+
+        try:
+            from streamlit.testing.v1 import AppTest
+            import os
+            import io
+
+            app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.py')
+            at = AppTest.from_file(app_path, default_timeout=30).run()
+
+            df = pd.DataFrame({
+                'Clock': [
+                    '2026-01-05 10:00:00',
+                    '2026-01-05 10:15:00',
+                    '2026-01-05 10:30:00',
+                    '2026-01-05 10:45:00',
+                ],
+                'kW_Import': [100.0, 120.0, 160.0, 80.0],
+                'Voltage': [220.0, 220.0, 220.0, 220.0],
+            })
+            buffer = io.BytesIO()
+            df.to_csv(buffer, index=False)
+            at.file_uploader[0].set_value([("peak.csv", buffer.getvalue(), "text/csv")]).run()
+            self.assertFalse(at.exception, f"App execution failed: {at.exception}")
+
+            metrics = {m.label: m.value for m in at.metric}
+            self.assertNotIn("โหลดรวมทั้งหมด", metrics, "kW must not be summed across intervals")
+            self.assertEqual(metrics["🔥 โหลดสูงสุด (Peak)"], "160.00 kW")
+
+            period_table = at.dataframe[1].value
+            self.assertIn("โหลดสูงสุด (kW)", period_table.columns)
+            self.assertNotIn("โหลดรวม (kW)", period_table.columns)
+            self.assertEqual(float(period_table["โหลดสูงสุด (kW)"].max()), 160.0)
+
+            next(ni for ni in at.number_input if "ใส่เวลาที่เลื่อน" in ni.label).set_value(30).run()
+            self.assertFalse(at.exception, f"App execution failed after simulation: {at.exception}")
+            sim_peaks = [m.value for m in at.metric if m.label == "🔥 โหลดสูงสุด (Peak)"]
+            self.assertEqual(len(sim_peaks), 2, "Expected current and simulated peak metrics")
+            self.assertTrue(all(value == "160.00 kW" for value in sim_peaks), sim_peaks)
+        finally:
+            # Keep the real streamlit module loaded: restoring the mock here would force the
+            # next AppTest (test_ui_interactions) to re-execute streamlit/__init__.py, which
+            # raises "DeltaGeneratorSingleton instance already exists!".
+            if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
+                sys.modules['streamlit'] = mock_st
+
     def test_ui_interactions(self):
         """
         Integration test: verify UI interactions with AppTest

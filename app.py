@@ -433,15 +433,23 @@ with tab2:
             )
 
         st.markdown("##### 🧾 สรุปสัดส่วนตามช่วงเวลา (Period Breakdown)")
-        summary_daily = day_df.groupby('Period_Detail')[['kW_Import', 'kWh_15min', 'Cost_THB']].sum().reset_index()
-        summary_daily.columns = ['สถานะ (Period)', 'โหลดรวม (kW)', 'พลังงานรวม (kWh)', 'ค่าไฟฟ้า (บาท)']
+        summary_daily = (
+            day_df.groupby('Period_Detail')
+            .agg(kW_Import=('kW_Import', 'max'), kWh_15min=('kWh_15min', 'sum'), Cost_THB=('Cost_THB', 'sum'))
+            .reset_index()
+        )
+        summary_daily.columns = ['สถานะ (Period)', 'โหลดสูงสุด (kW)', 'พลังงานรวม (kWh)', 'ค่าไฟฟ้า (บาท)']
         st.dataframe(
             summary_daily,
             width='stretch',
             hide_index=True,
             column_config={
                 "สถานะ (Period)": st.column_config.TextColumn("สถานะ (Period)"),
-                "โหลดรวม (kW)": st.column_config.NumberColumn("โหลดรวม (kW)", format="%.2f"),
+                "โหลดสูงสุด (kW)": st.column_config.NumberColumn(
+                    "โหลดสูงสุด (kW)",
+                    help="กำลังไฟฟ้าสูงสุดของช่วงเวลานี้ (ไม่ใช่ผลรวม kW ของทุกช่วง)",
+                    format="%.2f"
+                ),
                 "พลังงานรวม (kWh)": st.column_config.NumberColumn("พลังงานรวม (kWh)", format="%.2f"),
                 "ค่าไฟฟ้า (บาท)": st.column_config.NumberColumn("ค่าไฟฟ้า (บาท)", format="฿ %.2f"),
             }
@@ -671,12 +679,16 @@ with tab4:
     else:
         st.markdown("### 📊 สถานะปัจจุบัน (ก่อนจำลองเลื่อนเวลา)")
         orig_cost = df_summary['Cost_THB'].sum()
-        total_kw = df_summary['kW_Import'].sum()
-        
+        peak_kw_summary = df_summary['kW_Import'].max()
+
         with st.container(border=True):
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("พลังงานที่ใช้ทั้งหมด", f"{df_summary['kWh_15min'].sum():,.1f} kWh")
-            c2.metric("โหลดรวมทั้งหมด", f"{total_kw:,.1f} kW")
+            c2.metric(
+                "🔥 โหลดสูงสุด (Peak)",
+                f"{peak_kw_summary:,.2f} kW",
+                help="กำลังไฟฟ้าสูงสุดในช่วงที่เลือก (ไม่ใช่ผลรวม kW ของทุกช่วงเวลา) — ใช้เทียบกับขนาดมิเตอร์หรือค่าความต้องการไฟฟ้า"
+            )
             c3.metric("ค่าไฟฟ้าประเมิน", f"฿ {orig_cost:,.2f}")
             c4.metric("จุดผิดปกติ (Anomaly)", f"{len(df_summary[df_summary['Anomaly_Type'] != 'ปกติ'])} จุด")
 
@@ -712,13 +724,19 @@ with tab4:
                 df_sim = apply_tou_and_anomaly(df_sim, sensitivity, p_start, p_end, p_rate, op_rate, holiday_list)
                 
                 new_cost = df_sim['Cost_THB'].sum()
-                new_total_kw = df_sim['kW_Import'].sum()
-                
+                new_peak_kw = df_sim['kW_Import'].max()
+
                 st.markdown(f"#### 📊 สถานะคาดการณ์ (หลังเลื่อน {shift_mins_sim} นาที)")
-                
+
                 c1_sim, c2_sim, c3_sim, c4_sim = st.columns(4)
                 c1_sim.metric("พลังงานที่ใช้ทั้งหมด", f"{df_sim['kWh_15min'].sum():,.1f} kWh")
-                c2_sim.metric("โหลดรวมทั้งหมด", f"{new_total_kw:,.1f} kW")
+                c2_sim.metric(
+                    "🔥 โหลดสูงสุด (Peak)",
+                    f"{new_peak_kw:,.2f} kW",
+                    delta=f"{new_peak_kw - peak_kw_summary:,.2f} kW",
+                    delta_color="inverse",
+                    help="กำลังไฟฟ้าสูงสุดหลังจำลองการเลื่อนเวลา เทียบกับก่อนเลื่อน (ไม่ใช่ผลรวม kW ของทุกช่วงเวลา)"
+                )
                 
                 # คำนวณส่วนต่างราคาเพื่อแสดงลูกศรขึ้น/ลง
                 diff_cost = new_cost - orig_cost
