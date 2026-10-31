@@ -631,3 +631,73 @@ class TestApp(unittest.TestCase):
             if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
                 sys.modules['streamlit'] = mock_st
 
+
+    def test_tab3_shift_graph_shows_outcome_banner_and_rate_context(self):
+        """แท็บ 3 (กราฟจำลองเวลา) ต้องแสดงกล่องสรุปผลการจำลองค่าไฟ (ประหยัด/เพิ่มขึ้น/คงเดิม) รองรับอัตราเดียว และแสดงชื่อวันภาษาไทยในหัวข้อกราฟ"""
+        import sys
+        mock_st = None
+        if 'streamlit' in sys.modules and not hasattr(sys.modules['streamlit'], '__path__'):
+            mock_st = sys.modules.pop('streamlit')
+
+        try:
+            from streamlit.testing.v1 import AppTest
+            import os
+            import io
+            import datetime
+            import json
+
+            app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.py')
+            at = AppTest.from_file(app_path, default_timeout=30).run()
+
+            # Monday 2026-01-05 at 21:45:00 (On-Peak)
+            df = pd.DataFrame({
+                'Clock': [
+                    '2026-01-05 21:45:00',
+                ],
+                'kW_Import': [100.0],
+                'Voltage': [220.0],
+            })
+            buffer = io.BytesIO()
+            df.to_csv(buffer, index=False)
+            at.file_uploader[0].set_value([('shift_test.csv', buffer.getvalue(), 'text/csv')]).run()
+            self.assertFalse(at.exception, f'App execution failed: {at.exception}')
+
+            # 1. Default shift is 15 minutes: 21:45 + 15m = 22:00 (Off-Peak)
+            # Moves from On-Peak (5.7982) to Off-Peak (2.6369) -> Saves money!
+            savings_banners = [s.value for s in at.success if 'ประหยัดค่าไฟฟ้าได้' in s.value]
+            self.assertEqual(len(savings_banners), 1, 'Expected savings banner in Tab 3')
+            self.assertIn('฿', savings_banners[0])
+            self.assertIn('%', savings_banners[0])
+            self.assertIn('+15 นาที', savings_banners[0])
+
+            # 2. Change shift to 0 minutes: 21:45 (original time)
+            shift_input = next(ni for ni in at.number_input if 'จำนวนนาทีที่ต้องการเลื่อน' in ni.label)
+            shift_input.set_value(0).run()
+            self.assertFalse(at.exception, f'App execution failed with 0 shift: {at.exception}')
+            zero_info = [inf.value for inf in at.info if 'เวลาจำลองเป็น 0 นาที' in inf.value]
+            self.assertEqual(len(zero_info), 1, 'Expected 0-minute info banner in Tab 3')
+
+            # 3. Switch to Single Rate
+            rate_radio = next(r for r in at.radio if 'ประเภทอัตราค่าไฟ' in r.label)
+            rate_radio.set_value('อัตราเดียว (Single Rate)').run()
+            self.assertFalse(at.exception, f'App execution failed on rate switch: {at.exception}')
+
+            # In Single Rate, metric should show '⚡ พลังงานรวม (Total kWh)' instead of On-Peak
+            metrics = {m.label: m.value for m in at.metric}
+            self.assertIn('⚡ พลังงานรวม (Total kWh)', metrics, 'Expected Total kWh metric in Tab 3 under Single Rate')
+            self.assertNotIn('⚡ พลังงานช่วง On-Peak', metrics, 'On-Peak metric must not be displayed under Single Rate')
+
+            # 4. Check Thai day name in chart title when selecting specific date
+            shift_date_selector = next(sb for sb in at.selectbox if 'เลือกรูปแบบการเปรียบเทียบกราฟ' in sb.label)
+            shift_date_selector.set_value(datetime.date(2026, 1, 5)).run()
+            self.assertFalse(at.exception, f'App execution failed on date selector: {at.exception}')
+
+            plotly_charts = at.get('plotly_chart')
+            self.assertGreaterEqual(len(plotly_charts), 6, 'Expected comparison chart in Tab 3')
+            compare_fig_spec = json.loads(plotly_charts[5].proto.spec)
+            compare_title = compare_fig_spec.get('layout', {}).get('title', {}).get('text', '')
+            self.assertIn('วันจันทร์', compare_title)
+            self.assertIn('05/01/2026', compare_title)
+        finally:
+            if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
+                sys.modules['streamlit'] = mock_st
