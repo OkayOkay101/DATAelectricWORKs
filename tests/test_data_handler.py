@@ -2034,5 +2034,52 @@ class TestDataHandlerEdgeCases(unittest.TestCase):
         self.assertIn('NaT', snapshots[0]['label'])
 
 
+    def test_parse_text_lines_tab_separated_with_comma_in_header(self):
+        """parse_text_lines must correctly detect tab delimiter when column header contains comma."""
+        lines = [
+            "Date\tTime\tActive Power, kW\tVoltage\n",
+            "2026-01-01\t10:00\t150.5\t220.0\n",
+            "2026-01-01\t10:15\t160.0\t220.0\n",
+        ]
+        df = parse_text_lines(lines)
+        self.assertIsNotNone(df, "parse_text_lines should not return None for tab-separated data with comma in header")
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df.iloc[0]['Clock'], "2026-01-01 10:00")
+        self.assertEqual(df.iloc[0]['kW_Import'], "150.5")
+
+    def test_parse_text_lines_semicolon_separated_with_comma_in_header(self):
+        """parse_text_lines must correctly detect semicolon delimiter when column header contains comma."""
+        lines = [
+            "Date;Time;Active Power, kW;Voltage\n",
+            "2026-01-01;10:00;150.5;220.0\n",
+            "2026-01-01;10:15;160.0;220.0\n",
+        ]
+        df = parse_text_lines(lines)
+        self.assertIsNotNone(df, "parse_text_lines should not return None for semicolon-separated data with comma in header")
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df.iloc[0]['Clock'], "2026-01-01 10:00")
+        self.assertEqual(df.iloc[0]['kW_Import'], "150.5")
+
+    def test_load_file_tab_separated_with_comma_in_header_succeeds(self):
+        """load_file must successfully parse tab-separated txt/csv files when header contains commas."""
+        import io
+        from data_handler import load_file
+        content = b"Date\tTime\tActive Power, kW\tVoltage\n2026-01-01\t10:00\t150.5\t220.0\n2026-01-01\t10:15\t160.0\t220.0\n"
+        df = load_file(io.BytesIO(content), "txt")
+        self.assertIsNotNone(df)
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df.iloc[0]['Clock'], "2026-01-01 10:00")
+
+    def test_load_file_semicolon_separated_with_comma_in_header_succeeds(self):
+        """load_file must successfully parse semicolon-separated csv files when header contains commas."""
+        import io
+        from data_handler import load_file
+        content = b"Date;Time;Active Power, kW;Voltage\n2026-01-01;10:00;150.5;220.0\n2026-01-01;10:15;160.0;220.0\n"
+        df = load_file(io.BytesIO(content), "csv")
+        self.assertIsNotNone(df)
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df.iloc[0]['Clock'], "2026-01-01 10:00")
+
+
 if __name__ == '__main__':
     unittest.main()
