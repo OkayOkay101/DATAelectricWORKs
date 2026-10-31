@@ -1129,11 +1129,13 @@ def sort_and_deduplicate_by_clock(df):
     concat ต่อกันมักเป็นลำดับเวลาเพิ่มขึ้นอยู่แล้ว การตรวจลำดับด้วย int64 epoch ก่อนทำให้ข้าม
     multi-column lexsort + drop_duplicates ที่ไม่ได้ทำอะไร (~53.6 ms/200k, ~163.3 ms/500k) ได้
     """
+    if df is None:
+        return None
+    if df.empty or 'Clock' not in df.columns:
+        return df.copy()
+
     if (
-        df is not None
-        and len(df) > 0
-        and 'Clock' in df.columns
-        and 'kW_Import' in df.columns
+        'kW_Import' in df.columns
         and df['Clock'].dtype == 'datetime64[ns]'
         and df.index.equals(pd.RangeIndex(len(df)))
     ):
@@ -1145,8 +1147,11 @@ def sort_and_deduplicate_by_clock(df):
         elif ns[0] != nat_sentinel and np.all(np.diff(ns) > 0):
             return df
 
+    sort_cols = ['Clock', 'kW_Import'] if 'kW_Import' in df.columns else ['Clock']
+    ascending = [True, False] if 'kW_Import' in df.columns else [True]
+
     return (
-        df.sort_values(['Clock', 'kW_Import'], ascending=[True, False])
+        df.sort_values(sort_cols, ascending=ascending)
         .drop_duplicates(subset=['Clock'], keep='first')
         .reset_index(drop=True)
     )
@@ -1159,7 +1164,11 @@ def get_usage_snapshots(df):
     if 'kW_Import' not in df.columns or 'Clock' not in df.columns:
         return []
 
-    kw_array = df['kW_Import'].to_numpy()
+    if not pd.api.types.is_numeric_dtype(df['kW_Import']):
+        kw_num = pd.to_numeric(df['kW_Import'], errors='coerce').fillna(0.0)
+        kw_array = kw_num.to_numpy(dtype='float64')
+    else:
+        kw_array = df['kW_Import'].to_numpy()
     
     is_positive = kw_array > 0
     padded = np.concatenate(([False], is_positive, [False]))
@@ -1190,6 +1199,9 @@ def get_usage_snapshots(df):
     # yyyy-mm-dd hh:mm:ss -> dd/mm/yy hh:mm
     time_series = c_str.str.slice(11, 16).replace('', '00:00')
     formatted = (c_str.str.slice(8, 10) + '/' + c_str.str.slice(5, 7) + '/' + c_str.str.slice(2, 4) + ' ' + time_series).to_numpy()
+    nat_mask = target_clocks.isna().to_numpy() if hasattr(target_clocks, 'isna') else (c_str == 'NaT').to_numpy()
+    if nat_mask.any():
+        formatted[nat_mask] = 'NaT'
 
     num_sessions = len(starts)
     s_times = formatted[:num_sessions]
