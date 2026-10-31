@@ -418,6 +418,118 @@ class TestDataHandler(unittest.TestCase):
             load_file(oversized_stream, "csv")
         self.assertIn("ขนาดไฟล์เกินกำหนด", str(ctx.exception))
 
+    def test_get_upload_size_ignores_negative_size_and_falls_back_to_stream(self):
+        import io
+        from data_handler import get_upload_size
+
+        # 1. Fallback to getbuffer() when size is negative
+        stream = io.BytesIO(b"X" * 1024)
+        stream.size = -1
+        self.assertEqual(get_upload_size(stream), 1024)
+
+        # 2. Fallback to seek/tell when size is negative and getbuffer is absent
+        class MockSeekableNegativeStream(io.BytesIO):
+            def __init__(self, nbytes):
+                super().__init__(b"sample")
+                self.virtual_size = nbytes
+                self.size = -1
+                self._virtual_pos = None
+
+            def __getattribute__(self, name):
+                if name == 'getbuffer':
+                    raise AttributeError("No getbuffer")
+                return super().__getattribute__(name)
+
+            def seek(self, offset, whence=io.SEEK_SET):
+                if whence == io.SEEK_END:
+                    self._virtual_pos = self.virtual_size + offset
+                    return self._virtual_pos
+                self._virtual_pos = None
+                return super().seek(offset, whence)
+
+            def tell(self):
+                if getattr(self, '_virtual_pos', None) is not None:
+                    return self._virtual_pos
+                return super().tell()
+
+        self.assertEqual(get_upload_size(MockSeekableNegativeStream(4096)), 4096)
+
+        # 3. Unseekable negative stream returns None
+        class MockUnseekableNegativeStream:
+            size = -1
+
+        self.assertIsNone(get_upload_size(MockUnseekableNegativeStream()))
+
+    def test_load_file_rejects_oversized_file_with_negative_size_attribute(self):
+        import io
+        from data_handler import load_file, UploadValidationError, MAX_FILE_SIZE_BYTES
+
+        class MockOversizedNegativeStream(io.BytesIO):
+            def __init__(self, content, virtual_size):
+                super().__init__(content)
+                self.virtual_size = virtual_size
+                self.size = -1
+                self._virtual_pos = None
+
+            def __getattribute__(self, name):
+                if name == 'getbuffer':
+                    raise AttributeError("No getbuffer")
+                return super().__getattribute__(name)
+
+            def seek(self, offset, whence=io.SEEK_SET):
+                if whence == io.SEEK_END and self.virtual_size is not None:
+                    self._virtual_pos = self.virtual_size + offset
+                    return self._virtual_pos
+                self._virtual_pos = None
+                return super().seek(offset, whence)
+
+            def tell(self):
+                if getattr(self, '_virtual_pos', None) is not None:
+                    return self._virtual_pos
+                return super().tell()
+
+        oversized_stream = MockOversizedNegativeStream(
+            b"Clock,kW_Import,Voltage\n01/01/2026 00:00,100,220\n",
+            virtual_size=MAX_FILE_SIZE_BYTES + 2048
+        )
+        with self.assertRaises(UploadValidationError) as ctx:
+            load_file(oversized_stream, "csv")
+        self.assertIn("ขนาดไฟล์เกินกำหนด", str(ctx.exception))
+
+    def test_validate_upload_batch_does_not_allow_negative_size_to_reduce_total_or_bypass(self):
+        import io
+        from data_handler import validate_upload_batch, UploadValidationError, MAX_TOTAL_UPLOAD_BYTES
+
+        class MockStream(io.BytesIO):
+            def __init__(self, size_attr, virtual_size):
+                super().__init__(b"Clock,kW_Import,Voltage\n01/01/2026 00:00,100,220\n")
+                self.size = size_attr
+                self.virtual_size = virtual_size
+                self._virtual_pos = None
+
+            def __getattribute__(self, name):
+                if name == 'getbuffer':
+                    raise AttributeError("No getbuffer")
+                return super().__getattribute__(name)
+
+            def seek(self, offset, whence=io.SEEK_SET):
+                if whence == io.SEEK_END and self.virtual_size is not None:
+                    self._virtual_pos = self.virtual_size + offset
+                    return self._virtual_pos
+                self._virtual_pos = None
+                return super().seek(offset, whence)
+
+            def tell(self):
+                if getattr(self, '_virtual_pos', None) is not None:
+                    return self._virtual_pos
+                return super().tell()
+
+        per_file = MAX_TOTAL_UPLOAD_BYTES // 4 + 1024
+        files = [MockStream(size_attr=-1, virtual_size=per_file) for _ in range(4)]
+        with self.assertRaises(UploadValidationError) as ctx:
+            validate_upload_batch(files)
+        self.assertIn("ขนาดไฟล์รวมเกินกำหนด", str(ctx.exception))
+
     def test_app_enforces_upload_batch_limits(self):
         import ast
         app_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'app.py'))
