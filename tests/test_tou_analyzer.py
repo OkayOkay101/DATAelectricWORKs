@@ -297,6 +297,66 @@ class TouFunctionalTests(unittest.TestCase):
         self.assertEqual(res['Period_Detail'].tolist(), ['Off-Peak', 'Off-Peak'])
         self.assertEqual(res['Rate_THB'].tolist(), [2.0, 2.0])
 
+    def test_none_dataframe_returns_empty_dataframe_with_standard_columns(self):
+        """Passing None instead of DataFrame should return an empty DataFrame with standard columns without AttributeError."""
+        res = apply_tou_and_anomaly(None, 2.0, time(9, 0), time(22, 0), 5.0, 2.0)
+        self.assertIsInstance(res, pd.DataFrame)
+        self.assertTrue(res.empty)
+        expected_cols = [
+            'Clock', 'kW_Import', 'kWh_15min',
+            'Is_Weekend', 'Is_Holiday', 'Period_Detail',
+            'Rate_THB', 'Cost_THB', 'Anomaly_Type'
+        ]
+        for col in expected_cols:
+            self.assertIn(col, res.columns)
+
+    def test_nan_kw_import_and_kwh_15min_filled_gracefully(self):
+        """Float NaN in kW_Import and kWh_15min must be filled with 0.0 to prevent NaN in Cost_THB."""
+        import numpy as np
+        df = pd.DataFrame({
+            'Clock': [pd.Timestamp('2026-10-19 12:00:00'), pd.Timestamp('2026-10-19 12:15:00')],
+            'kW_Import': [100.0, np.nan],
+            'kWh_15min': [np.nan, 5.0]
+        })
+        res = apply_tou_and_anomaly(df, 2.0, time(9, 0), time(22, 0), 5.0, 2.0)
+        self.assertEqual(res['kW_Import'].tolist(), [100.0, 0.0])
+        self.assertEqual(res['kWh_15min'].tolist(), [0.0, 5.0])
+        self.assertEqual(res['Cost_THB'].tolist(), [0.0, 25.0])
+        self.assertFalse(res['Cost_THB'].isna().any())
+
+    def test_leap_year_february_29_peak_and_holiday(self):
+        """Leap day Feb 29 on a weekday must evaluate On-Peak correctly and respect explicit holidays."""
+        df = pd.DataFrame({
+            'Clock': [
+                pd.Timestamp('2024-02-29 12:00:00'),
+                pd.Timestamp('2024-02-29 23:00:00')
+            ],
+            'kW_Import': [100.0, 50.0]
+        })
+        res = apply_tou_and_anomaly(df, 2.0, time(9, 0), time(22, 0), 5.0, 2.0)
+        self.assertFalse(res['Is_Weekend'].any())
+        self.assertFalse(res['Is_Holiday'].any())
+        self.assertEqual(res['Period_Detail'].tolist(), ['On-Peak', 'Off-Peak'])
+        self.assertEqual(res['Rate_THB'].tolist(), [5.0, 2.0])
+
+        res_hol = apply_tou_and_anomaly(df, 2.0, time(9, 0), time(22, 0), 5.0, 2.0, holiday_list=['2024-02-29'])
+        self.assertTrue(res_hol['Is_Holiday'].all())
+        self.assertEqual(res_hol['Period_Detail'].tolist(), ['Holiday', 'Holiday'])
+        self.assertEqual(res_hol['Rate_THB'].tolist(), [2.0, 2.0])
+
+    def test_single_row_dataset_classification_and_metrics(self):
+        """Single-row DataFrame should compute all standard fields without division-by-zero in anomaly detection."""
+        df = pd.DataFrame({
+            'Clock': [pd.Timestamp('2026-10-19 14:00:00')],
+            'kW_Import': [40.0]
+        })
+        res = apply_tou_and_anomaly(df, 2.0, time(9, 0), time(22, 0), 5.0, 2.0)
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res['kWh_15min'].iloc[0], 10.0)
+        self.assertEqual(res['Cost_THB'].iloc[0], 50.0)
+        self.assertEqual(res['Period_Detail'].iloc[0], 'On-Peak')
+        self.assertEqual(res['Anomaly_Type'].iloc[0], 'ปกติ')
+
 
 if __name__ == '__main__':
     unittest.main()
