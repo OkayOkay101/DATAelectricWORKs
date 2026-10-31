@@ -4,6 +4,7 @@ import numpy as np
 import io
 import logging
 import re
+import zipfile
 
 # ค่าคงที่สำหรับป้องกัน CSV / Formula Injection (CWE-1236)
 PURE_NUMBER_PATTERN = re.compile(r'^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$')
@@ -109,6 +110,35 @@ DEFAULT_OUTLIER_V_MAX = 2000000
 # ค่าคงที่สำหรับความปลอดภัยและการตรวจสอบไฟล์นำเข้า
 ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls', 'txt'}
 MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
+MAX_EXCEL_UNCOMPRESSED_BYTES = 256 * 1024 * 1024  # 256 MB (กัน Zip Bomb ใน .xlsx)
+
+
+def validate_excel_archive(uploaded_file):
+    """
+    ตรวจขนาดข้อมูลภายในไฟล์ .xlsx (ZIP) ก่อนส่งให้ openpyxl แตกไฟล์
+    เพื่อป้องกัน Zip Bomb / Decompression Bomb (CWE-409) ที่อาจทำให้หน่วยความจำหมด
+    ไฟล์ที่ไม่ใช่ ZIP (เช่น HTML ที่เปลี่ยนนามสกุล) จะปล่อยให้ fallback เดิมจัดการต่อ
+    """
+    total_uncompressed = 0
+    try:
+        uploaded_file.seek(0)
+        with zipfile.ZipFile(uploaded_file) as archive:
+            for info in archive.infolist():
+                total_uncompressed += info.file_size
+                if total_uncompressed > MAX_EXCEL_UNCOMPRESSED_BYTES:
+                    break
+    except (zipfile.BadZipFile, OSError):
+        return
+    finally:
+        try:
+            uploaded_file.seek(0)
+        except Exception:
+            pass
+
+    if total_uncompressed > MAX_EXCEL_UNCOMPRESSED_BYTES:
+        raise ValueError(
+            f"ไฟล์ Excel มีข้อมูลเมื่อแตกไฟล์เกินกำหนด (สูงสุด {MAX_EXCEL_UNCOMPRESSED_BYTES // (1024 * 1024)} MB)"
+        )
 
 
 def sanitize_filename(filename: str) -> str:
@@ -578,6 +608,8 @@ def load_file(uploaded_file, file_ext):
 
     # 1. หากเป็นไฟล์ Excel (.xlsx, .xls) หรือ HTML ให้ลองอ่านด้วย Excel engine ก่อน
     if clean_ext in ['xlsx', 'xls']:
+        if clean_ext == 'xlsx':
+            validate_excel_archive(uploaded_file)
         try:
             engine = 'openpyxl' if clean_ext == 'xlsx' else 'xlrd'
             uploaded_file.seek(0)
