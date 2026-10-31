@@ -701,3 +701,70 @@ class TestApp(unittest.TestCase):
         finally:
             if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
                 sys.modules['streamlit'] = mock_st
+
+
+    def test_tab4_cost_simulator_shows_scope_context_and_single_rate_outcome(self):
+        """แท็บ 4 (วิเคราะห์ค่าไฟ & จำลอง) ต้องแสดงคำอธิบายขอบเขตข้อมูล (วัน/เดือน/ช่วงเวลา) และกล่องสรุปผลจำลองรองรับอัตราเดียว"""
+        import sys
+        mock_st = None
+        if 'streamlit' in sys.modules and not hasattr(sys.modules['streamlit'], '__path__'):
+            mock_st = sys.modules.pop('streamlit')
+
+        try:
+            from streamlit.testing.v1 import AppTest
+            import os
+            import io
+            import datetime
+
+            app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.py')
+            at = AppTest.from_file(app_path, default_timeout=30).run()
+
+            # Monday 2026-01-05 at 10:00:00 (On-Peak)
+            df = pd.DataFrame({
+                'Clock': [
+                    '2026-01-05 10:00:00',
+                    '2026-01-05 10:15:00',
+                ],
+                'kW_Import': [100.0, 100.0],
+                'Voltage': [220.0, 220.0],
+            })
+            buffer = io.BytesIO()
+            df.to_csv(buffer, index=False)
+            at.file_uploader[0].set_value([('tab4_test.csv', buffer.getvalue(), 'text/csv')]).run()
+            self.assertFalse(at.exception, f'App execution failed: {at.exception}')
+
+            # 1. Default summary mode: "ภาพรวมทั้งหมด (Total)"
+            # Check scope caption is rendered in Tab 4
+            scope_captions = [c.value for c in at.caption if 'ขอบเขตข้อมูลที่แสดง' in c.value]
+            self.assertEqual(len(scope_captions), 1, 'Expected scope context caption in Tab 4')
+            self.assertIn('ภาพรวมข้อมูลทั้งหมด', scope_captions[0])
+            self.assertIn('05/01/2026', scope_captions[0])
+
+            # 2. Switch summary mode to "รายวัน (Daily)"
+            radios = [r for r in at.radio if 'ระดับการสรุปผล' in r.label or 'กำหนดช่วงเวลา (Custom)' in r.options]
+            radios[0].set_value('รายวัน (Daily)').run()
+            self.assertFalse(at.exception, f'App execution failed on daily summary: {at.exception}')
+
+            daily_captions = [c.value for c in at.caption if 'ขอบเขตข้อมูลที่แสดง' in c.value]
+            self.assertEqual(len(daily_captions), 1)
+            self.assertIn('วันจันทร์', daily_captions[0])
+            self.assertIn('05/01/2026', daily_captions[0])
+
+            # 3. Simulate shift minutes in Tab 4 (e.g. 60 mins)
+            shift_input = next(ni for ni in at.number_input if 'ใส่เวลาที่เลื่อน' in ni.label)
+            shift_input.set_value(60).run()
+            self.assertFalse(at.exception, f'App execution failed on shift simulation: {at.exception}')
+
+            # 4. Switch rate type to "อัตราเดียว (Single Rate)"
+            rate_radio = next(r for r in at.radio if 'ประเภทอัตราค่าไฟ' in r.label)
+            rate_radio.set_value('อัตราเดียว (Single Rate)').run()
+            self.assertFalse(at.exception, f'App execution failed on rate switch: {at.exception}')
+
+            # Check that simulation outcome banner in Tab 4 explains Single Rate
+            single_rate_banners = [inf.value for inf in at.info if 'ผลการจำลอง (อัตราคงที่)' in inf.value]
+            self.assertEqual(len(single_rate_banners), 2, 'Expected Single Rate simulation explanation banner in Tab 3 and Tab 4')
+            self.assertIn('ค่าไฟฟ้าคงเดิม', single_rate_banners[0])
+            self.assertIn('คิดเรทอัตราเดียว', single_rate_banners[0])
+        finally:
+            if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
+                sys.modules['streamlit'] = mock_st
