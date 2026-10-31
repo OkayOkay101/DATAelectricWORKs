@@ -6,7 +6,7 @@ import streamlit as st
 import datetime
 
 # --- นำเข้า (Import) โมดูลที่เราแยกไว้ ---
-from data_handler import load_file, preprocess_data, get_usage_snapshots, sanitize_dataframe_for_csv, sanitize_filename, safe_error_reason
+from data_handler import load_file, preprocess_data, get_usage_snapshots, sanitize_dataframe_for_csv, sanitize_filename, safe_error_reason, sort_and_deduplicate_by_clock
 from tou_analyzer import apply_tou_and_anomaly
 
 @st.cache_data
@@ -199,7 +199,7 @@ with st.spinner('🔄 กำลังโหลด ประมวลผล แ�
     num_files = len(all_dfs)
     total_files = len(uploaded_files)
     del all_dfs
-    df_combined = df_combined.sort_values(['Clock', 'kW_Import'], ascending=[True, False]).drop_duplicates(subset=['Clock'], keep='first').reset_index(drop=True)
+    df_combined = sort_and_deduplicate_by_clock(df_combined)
     
     df_master = apply_tou_and_anomaly(df_combined, sensitivity, p_start, p_end, p_rate, op_rate, holiday_list)
     snapshots = get_usage_snapshots(df_master)
