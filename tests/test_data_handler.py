@@ -1839,5 +1839,80 @@ class TestDataHandlerEdgeCases(unittest.TestCase):
         self.assertIn('NaT', snapshots[0]['label'])
 
 
+    def test_shift_dataframe_clock_parity_and_day_crossing(self):
+        """shift_dataframe_clock must correctly shift Clock and normalize Date with exact parity across day boundaries."""
+        from data_handler import shift_dataframe_clock
+
+        # 1. Midnight crossing shift forward (+60m)
+        df_midnight = pd.DataFrame({
+            'Clock': [pd.Timestamp('2024-01-01 23:30:00'), pd.Timestamp('2024-01-02 00:15:00')],
+            'kW_Import': [100.0, 150.0]
+        })
+        shifted_fwd = shift_dataframe_clock(df_midnight, 60)
+        self.assertEqual(shifted_fwd['Original_Clock'].tolist(), [pd.Timestamp('2024-01-01 23:30:00'), pd.Timestamp('2024-01-02 00:15:00')])
+        self.assertEqual(shifted_fwd['Clock'].tolist(), [pd.Timestamp('2024-01-02 00:30:00'), pd.Timestamp('2024-01-02 01:15:00')])
+        self.assertEqual(shifted_fwd['Date'].tolist(), [pd.Timestamp('2024-01-02 00:00:00'), pd.Timestamp('2024-01-02 00:00:00')])
+
+        # 2. Negative shift backward crossing midnight (-45m)
+        shifted_back = shift_dataframe_clock(df_midnight, -45)
+        self.assertEqual(shifted_back['Clock'].tolist(), [pd.Timestamp('2024-01-01 22:45:00'), pd.Timestamp('2024-01-01 23:30:00')])
+        self.assertEqual(shifted_back['Date'].tolist(), [pd.Timestamp('2024-01-01 00:00:00'), pd.Timestamp('2024-01-01 00:00:00')])
+
+        # 3. Zero shift
+        shifted_zero = shift_dataframe_clock(df_midnight, 0)
+        self.assertEqual(shifted_zero['Clock'].tolist(), df_midnight['Clock'].tolist())
+        self.assertEqual(shifted_zero['Date'].tolist(), [pd.Timestamp('2024-01-01'), pd.Timestamp('2024-01-02')])
+
+        # 4. None and empty handling
+        self.assertIsNone(shift_dataframe_clock(None, 15))
+        self.assertTrue(shift_dataframe_clock(pd.DataFrame(), 15).empty)
+
+    def test_get_time_shift_views_parity_and_bypass_sort(self):
+        """get_time_shift_views must return exact parity with legacy sort_values and dt.normalize slicing."""
+        import datetime
+        from data_handler import shift_dataframe_clock, get_time_shift_views
+        from tou_analyzer import apply_tou_and_anomaly
+
+        clocks = pd.date_range('2026-01-01 00:00', periods=200, freq='15min')
+        df_orig = pd.DataFrame({
+            'Clock': clocks,
+            'Date': clocks.normalize(),
+            'kW_Import': np.linspace(10, 100, 200),
+            'kWh_15min': np.linspace(2.5, 25, 200),
+            'Period_Detail': ['Off-Peak'] * 200,
+            'Rate_THB': [2.6369] * 200,
+            'Cost_THB': np.linspace(6.5, 65, 200),
+            'Anomaly_Type': ['ปกติ'] * 200
+        })
+
+        df_shifted = shift_dataframe_clock(df_orig, 15)
+        df_shifted_recalc = apply_tou_and_anomaly(df_shifted, 2.0, datetime.time(9, 0), datetime.time(22, 0), 5.7982, 2.6369)
+
+        # View: All Data
+        view_all = "ดูทั้งหมด (ตั้งแต่ต้นจนจบ)"
+        leg_old_all = df_orig.sort_values('Clock')
+        leg_new_all = df_shifted_recalc.sort_values('Clock')
+
+        fast_old_all, fast_new_all = get_time_shift_views(df_orig, df_shifted_recalc, view_all)
+        pd.testing.assert_frame_equal(leg_old_all, fast_old_all)
+        pd.testing.assert_frame_equal(leg_new_all, fast_new_all)
+
+        # View: Single Date
+        view_date = pd.Timestamp('2026-01-01').date()
+        leg_old_single = df_orig[df_orig['Date'] == pd.Timestamp(view_date)].sort_values('Clock')
+        leg_new_single = df_shifted_recalc[df_shifted_recalc['Original_Clock'].dt.normalize() == pd.Timestamp(view_date)].sort_values('Clock')
+
+        fast_old_single, fast_new_single = get_time_shift_views(df_orig, df_shifted_recalc, view_date)
+        pd.testing.assert_frame_equal(leg_old_single, fast_old_single)
+        pd.testing.assert_frame_equal(leg_new_single, fast_new_single)
+
+        # Edge case: Shuffled data triggers fallback sort
+        shuff_orig = df_orig.sample(frac=1.0, random_state=42)
+        shuff_shifted = df_shifted_recalc.sample(frac=1.0, random_state=42)
+        shuff_old, shuff_new = get_time_shift_views(shuff_orig, shuff_shifted, view_all)
+        pd.testing.assert_frame_equal(shuff_old, leg_old_all)
+        pd.testing.assert_frame_equal(shuff_new, leg_new_all)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -6,7 +6,19 @@ import streamlit as st
 import datetime
 
 # --- นำเข้า (Import) โมดูลที่เราแยกไว้ ---
-from data_handler import load_file, preprocess_data, get_usage_snapshots, sanitize_dataframe_for_csv, sanitize_filename, safe_error_reason, sort_and_deduplicate_by_clock, validate_upload_batch, UploadValidationError
+from data_handler import (
+    load_file,
+    preprocess_data,
+    get_usage_snapshots,
+    sanitize_dataframe_for_csv,
+    sanitize_filename,
+    safe_error_reason,
+    sort_and_deduplicate_by_clock,
+    shift_dataframe_clock,
+    get_time_shift_views,
+    validate_upload_batch,
+    UploadValidationError,
+)
 from tou_analyzer import apply_tou_and_anomaly
 
 @st.cache_data
@@ -552,18 +564,13 @@ with tab3:
             dates_for_shift = ["ดูทั้งหมด (ตั้งแต่ต้นจนจบ)"] + [pd.Timestamp(d).date() for d in sorted(df_display['Date'].unique())]
             view_date = st.selectbox("📅 เลือกรูปแบบการเปรียบเทียบกราฟ", dates_for_shift, key="shift_date_selector")
     
-    df_new = df_display.copy()
-    df_new['Original_Clock'] = df_new['Clock'] 
-    df_new['Clock'] = df_new['Clock'] + pd.to_timedelta(shift_minutes, unit='m')
-    df_new['Date'] = df_new['Clock'].dt.normalize()
+    df_new = shift_dataframe_clock(df_display, shift_minutes)
     df_new_recalc = apply_tou_and_anomaly(df_new, sensitivity, p_start, p_end, p_rate, op_rate, holiday_list)
 
+    plot_old, plot_new = get_time_shift_views(df_display, df_new_recalc, view_date)
     if view_date == "ดูทั้งหมด (ตั้งแต่ต้นจนจบ)":
-        plot_old, plot_new = df_display.sort_values('Clock'), df_new_recalc.sort_values('Clock')
         title_text = "กราฟเส้นเปรียบเทียบข้อมูลเดิม เทียบกับ ข้อมูลใหม่ (ทั้งหมด)"
     else:
-        plot_old = df_display[df_display['Date'] == pd.Timestamp(view_date)].sort_values('Clock')
-        plot_new = df_new_recalc[df_new_recalc['Original_Clock'].dt.normalize() == pd.Timestamp(view_date)].sort_values('Clock')
         title_text = f"กราฟเส้นเปรียบเทียบข้อมูลเดิม เทียบกับ ข้อมูลใหม่ ประจำวันที่ {view_date}"
 
     peak_old = plot_old['kW_Import'].max() if not plot_old.empty else 0.0
@@ -725,9 +732,7 @@ with tab4:
             shift_mins_sim = st.number_input("⏱️ ใส่เวลาที่เลื่อน (นาที):", value=0, step=15, help="บวก = เลื่อนเวลาไปข้างหน้า, ลบ = ถอยหลัง")
                 
             if shift_mins_sim != 0:
-                df_sim = df_summary.copy()
-                df_sim['Clock'] = df_sim['Clock'] + pd.to_timedelta(shift_mins_sim, unit='m')
-                df_sim['Date'] = df_sim['Clock'].dt.normalize()
+                df_sim = shift_dataframe_clock(df_summary, shift_mins_sim)
                 df_sim = apply_tou_and_anomaly(df_sim, sensitivity, p_start, p_end, p_rate, op_rate, holiday_list)
                 
                 new_cost = df_sim['Cost_THB'].sum()

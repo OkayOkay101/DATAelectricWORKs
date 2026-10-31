@@ -39,6 +39,31 @@ class TestApp(unittest.TestCase):
         ]
         self.assertTrue(calls, "app.py must call sort_and_deduplicate_by_clock when combining files")
 
+    def test_app_uses_time_shift_helpers(self):
+        """app.py must use shift_dataframe_clock and get_time_shift_views for fast time-shift simulation."""
+        import ast
+        import os
+        app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.py')
+        with open(app_path, 'r', encoding='utf-8') as f:
+            tree = ast.parse(f.read())
+
+        imports = {
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module == 'data_handler'
+            for alias in node.names
+        }
+        self.assertIn('shift_dataframe_clock', imports, "app.py must import shift_dataframe_clock from data_handler")
+        self.assertIn('get_time_shift_views', imports, "app.py must import get_time_shift_views from data_handler")
+
+        calls = [
+            getattr(node.func, 'id', '')
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+        ]
+        self.assertIn('shift_dataframe_clock', calls, "app.py must call shift_dataframe_clock")
+        self.assertIn('get_time_shift_views', calls, "app.py must call get_time_shift_views")
+
     def test_skip_reason_uses_whitelisted_error_helper(self):
         """UI ต้องไม่แสดง str(e) ของ exception ภายนอกผ่าน safe_error_reason"""
         import ast
