@@ -144,7 +144,8 @@ MAX_TOTAL_UPLOAD_BYTES = 200 * 1024 * 1024  # 200 MB (กัน Resource Exhaust
 def get_upload_size(uploaded_file):
     """
     คืนขนาดไฟล์ที่อัปโหลดเป็นไบต์ หรือ None หากตรวจสอบไม่ได้
-    รองรับทั้งออบเจกต์ที่มี attribute size (Streamlit UploadedFile) และ file-like ที่มี getbuffer()
+    รองรับทั้งออบเจกต์ที่มี attribute size (Streamlit UploadedFile), file-like ที่มี getbuffer()
+    และ stream ที่รองรับ seek/tell (เช่น TemporaryFile, BufferedReader)
     """
     size = getattr(uploaded_file, 'size', None)
     if size is not None:
@@ -156,6 +157,19 @@ def get_upload_size(uploaded_file):
         try:
             return uploaded_file.getbuffer().nbytes
         except Exception:
+            return None
+    if hasattr(uploaded_file, 'seek') and hasattr(uploaded_file, 'tell'):
+        try:
+            curr_pos = uploaded_file.tell()
+            uploaded_file.seek(0, io.SEEK_END)
+            end_pos = uploaded_file.tell()
+            uploaded_file.seek(curr_pos)
+            return int(end_pos)
+        except Exception:
+            try:
+                uploaded_file.seek(0)
+            except Exception:
+                pass
             return None
     return None
 
