@@ -6,7 +6,7 @@ import streamlit as st
 import datetime
 
 # --- นำเข้า (Import) โมดูลที่เราแยกไว้ ---
-from data_handler import load_file, preprocess_data, get_usage_snapshots, sanitize_dataframe_for_csv, sanitize_filename, safe_error_reason, sort_and_deduplicate_by_clock
+from data_handler import load_file, preprocess_data, get_usage_snapshots, sanitize_dataframe_for_csv, sanitize_filename, safe_error_reason, sort_and_deduplicate_by_clock, validate_upload_batch, UploadValidationError
 from tou_analyzer import apply_tou_and_anomaly
 
 @st.cache_data
@@ -155,6 +155,13 @@ if not uploaded_files:
             help="ดาวน์โหลดไฟล์ตัวอย่าง Load Profile สำหรับทดลองใช้งาน หรือใช้เป็นแม่แบบในการจัดเตรียมข้อมูล"
         )
 
+    st.stop()
+
+# --- Upload Batch Validation (Resource Exhaustion Protection) ---
+try:
+    validate_upload_batch(uploaded_files)
+except UploadValidationError as batch_error:
+    st.error(f"⚠️ {safe_error_reason(batch_error)}")
     st.stop()
 
 # --- Data Processing ---
