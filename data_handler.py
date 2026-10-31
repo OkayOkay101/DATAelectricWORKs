@@ -7,13 +7,13 @@ import re
 
 # ค่าคงที่สำหรับป้องกัน CSV / Formula Injection (CWE-1236)
 PURE_NUMBER_PATTERN = re.compile(r'^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$')
-DANGEROUS_FORMULA_PREFIXES = ('=', '@', '\t', '\r')
+DANGEROUS_FORMULA_PREFIXES = ('=', '@', '\t', '\r', '|', '%')
 
 
 def sanitize_csv_cell(val):
     """
     ฆ่าเชื้อข้อมูลเซลล์เพื่อป้องกัน CSV / Formula Injection (CWE-1236)
-    ตามแนวทางความปลอดภัยของ OWASP: หากค่าข้อความขึ้นต้นด้วย =, @, tab, cr
+    ตามแนวทางความปลอดภัยของ OWASP: หากค่าข้อความขึ้นต้นด้วย =, @, tab, cr, |, %
     หรือเครื่องหมาย +, - ที่ไม่ใช่ตัวเลขล้วน ให้เติม ' นำหน้าเพื่อให้โปรแกรมสเปรดชีต
     (เช่น Excel, Calc) แสดงผลเป็นข้อความธรรมดาแทนการรันสูตร
     """
@@ -39,7 +39,7 @@ def sanitize_csv_cell(val):
 def sanitize_dataframe_for_csv(df: pd.DataFrame) -> pd.DataFrame:
     """
     ป้องกัน Formula Injection สำหรับ DataFrame ทั้งตารางก่อนส่งออกเป็นไฟล์ CSV
-    ครอบคลุมทั้งชื่อคอลัมน์และข้อมูลในคอลัมน์ที่เป็น string/object
+    ครอบคลุมทั้งชื่อคอลัมน์, ดัชนี (index) และข้อมูลในคอลัมน์ที่เป็น string/object
     โดยยังคงรักษาค่าตัวเลขและวันเวลาเดิมอย่างถูกต้อง
     """
     if df is None:
@@ -47,14 +47,42 @@ def sanitize_dataframe_for_csv(df: pd.DataFrame) -> pd.DataFrame:
 
     df_clean = df.copy()
 
-    # ทำความสะอาดชื่อคอลัมน์
-    new_cols = []
-    for c in df_clean.columns:
-        if isinstance(c, str):
-            new_cols.append(sanitize_csv_cell(c))
+    # ทำความสะอาดชื่อคอลัมน์ (รองรับทั้ง Index ปกติ และ MultiIndex)
+    if isinstance(df_clean.columns, pd.MultiIndex):
+        df_clean.columns = df_clean.columns.map(
+            lambda x: tuple(sanitize_csv_cell(p) if isinstance(p, str) else p for p in x)
+        )
+        if any(isinstance(n, str) for n in df_clean.columns.names):
+            df_clean.columns = df_clean.columns.rename(
+                [sanitize_csv_cell(n) if isinstance(n, str) else n for n in df_clean.columns.names]
+            )
+    else:
+        new_cols = []
+        for c in df_clean.columns:
+            if isinstance(c, str):
+                new_cols.append(sanitize_csv_cell(c))
+            else:
+                new_cols.append(c)
+        df_clean.columns = new_cols
+
+    # ทำความสะอาด Index และ Index Names เพื่อป้องกัน Formula Injection เมื่อ export แบบมี index
+    if df_clean.index is not None:
+        if isinstance(df_clean.index, pd.MultiIndex):
+            df_clean.index = df_clean.index.map(
+                lambda x: tuple(sanitize_csv_cell(p) if isinstance(p, str) else p for p in x)
+            )
+            if any(isinstance(n, str) for n in df_clean.index.names):
+                df_clean.index = df_clean.index.rename(
+                    [sanitize_csv_cell(n) if isinstance(n, str) else n for n in df_clean.index.names]
+                )
         else:
-            new_cols.append(c)
-    df_clean.columns = new_cols
+            if df_clean.index.dtype == object or pd.api.types.is_string_dtype(df_clean.index):
+                u_idx = df_clean.index.unique()
+                idx_mapping = {val: sanitize_csv_cell(val) for val in u_idx}
+                if any(isinstance(k, str) and k != v for k, v in idx_mapping.items()):
+                    df_clean.index = df_clean.index.map(idx_mapping)
+            if df_clean.index.name and isinstance(df_clean.index.name, str):
+                df_clean.index.name = sanitize_csv_cell(df_clean.index.name)
 
     if df_clean.empty:
         return df_clean

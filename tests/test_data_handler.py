@@ -473,6 +473,53 @@ class TestDataHandler(unittest.TestCase):
         self.assertEqual(sanitized["NumericLoad"].iloc[0], -100.5)
         self.assertEqual(sanitized["NumericLoad"].iloc[1], 200.0)
 
+    def test_sanitize_csv_cell_pipe_and_percent_prefixes(self):
+        from data_handler import sanitize_csv_cell
+        self.assertEqual(sanitize_csv_cell("|cmd|'/C calc'!A0"), "'|cmd|'/C calc'!A0")
+        self.assertEqual(sanitize_csv_cell("|calc"), "'|calc")
+        self.assertEqual(sanitize_csv_cell("%calc"), "'%calc")
+        self.assertEqual(sanitize_csv_cell("  |formula_with_leading_space"), "'  |formula_with_leading_space")
+        self.assertEqual(sanitize_csv_cell("  %formula_with_leading_space"), "'  %formula_with_leading_space")
+
+    def test_sanitize_dataframe_for_csv_neutralizes_index_and_index_name(self):
+        from data_handler import sanitize_dataframe_for_csv
+        df = pd.DataFrame(
+            {"Load": [10.5, 20.0, 30.0]},
+            index=["=cmd|calc", "@danger", "+non_num"]
+        )
+        df.index.name = "=IndexHeader"
+        sanitized = sanitize_dataframe_for_csv(df)
+
+        self.assertEqual(sanitized.index[0], "'=cmd|calc")
+        self.assertEqual(sanitized.index[1], "'@danger")
+        self.assertEqual(sanitized.index[2], "'+non_num")
+        self.assertEqual(sanitized.index.name, "'=IndexHeader")
+        self.assertEqual(sanitized["Load"].iloc[0], 10.5)
+
+    def test_sanitize_dataframe_for_csv_multiindex_support(self):
+        from data_handler import sanitize_dataframe_for_csv
+        mi_index = pd.MultiIndex.from_tuples(
+            [("=calc", "group1"), ("@danger", "group2")],
+            names=["=Level1", "Level2"]
+        )
+        df = pd.DataFrame({"Val": [1, 2]}, index=mi_index)
+        sanitized = sanitize_dataframe_for_csv(df)
+
+        self.assertEqual(sanitized.index[0], ("'=calc", "group1"))
+        self.assertEqual(sanitized.index[1], ("'@danger", "group2"))
+        self.assertEqual(sanitized.index.names, ["'=Level1", "Level2"])
+
+    def test_sanitize_dataframe_for_csv_preserves_numeric_and_datetime_index(self):
+        from data_handler import sanitize_dataframe_for_csv
+        df_num = pd.DataFrame({"Val": [10, 20]}, index=[1, 2])
+        sanitized_num = sanitize_dataframe_for_csv(df_num)
+        self.assertEqual(list(sanitized_num.index), [1, 2])
+
+        dt_idx = pd.date_range("2026-01-01", periods=2, freq="15min")
+        df_dt = pd.DataFrame({"Val": [10, 20]}, index=dt_idx)
+        sanitized_dt = sanitize_dataframe_for_csv(df_dt)
+        pd.testing.assert_index_equal(sanitized_dt.index, dt_idx)
+
     def test_parse_text_lines_preserves_12hr_pm_records(self):
         # 12-hour AM/PM timestamps must not be falsely dropped by unanchored 'p' filter
         lines = [
