@@ -257,6 +257,19 @@ tab1, tab2, tab3, tab4 = st.tabs([
 with tab1:
     with st.container(border=True):
         st.markdown("#### ⚡ สรุปภาพรวมพลังงาน (Executive Summary)")
+        if not df_display.empty:
+            min_c = df_display['Clock'].min()
+            max_c = df_display['Clock'].max()
+            rate_info = (
+                f"TOU (On-Peak {p_rate:.4f} / Off-Peak {op_rate:.4f} บาท/หน่วย)"
+                if rate_type == "TOU (Time of Use)"
+                else f"อัตราเดียว ({single_rate:.4f} บาท/หน่วย)"
+            )
+            st.caption(
+                f"🗓️ **ขอบเขตข้อมูล:** {selected_snapshot} • {min_c:%d/%m/%Y %H:%M} ถึง "
+                f"{max_c:%d/%m/%Y %H:%M} ({len(df_display):,} รายการ, {df_display['Date'].nunique():,} วัน) • "
+                f"⚡ **ระบบคิดเงิน:** {rate_info}"
+            )
         m1, m2, m3, m4 = st.columns(4)
         total_kwh_display = df_display['kWh_15min'].sum() if not df_display.empty else 0.0
         peak_kw_display = df_display['kW_Import'].max() if not df_display.empty else 0.0
