@@ -2197,5 +2197,60 @@ class TestDataHandlerEdgeCases(unittest.TestCase):
         self.assertEqual(df.iloc[0]['Clock'], "2026-01-01 10:00")
 
 
+    def test_is_header_row_clock_with_kw_and_power_variants(self):
+        """Header detection must recognize Clock paired with kW, Demand, Active Power, or Thai power columns."""
+        from data_handler import is_header_row
+        self.assertTrue(is_header_row("Clock, kW, Voltage"))
+        self.assertTrue(is_header_row("Clock, kW"))
+        self.assertTrue(is_header_row("Clock, Demand (kW), Voltage"))
+        self.assertTrue(is_header_row("Clock, Active Power, Voltage"))
+        self.assertTrue(is_header_row("Clock, กำลังไฟฟ้า (kW), แรงดัน"))
+        self.assertTrue(is_header_row("Clock, พลังงาน (kW)"))
+
+    def test_parse_text_lines_none_or_empty_returns_none(self):
+        """parse_text_lines with None or empty sequence must return None safely without raising TypeError."""
+        self.assertIsNone(parse_text_lines(None))
+        self.assertIsNone(parse_text_lines([]))
+
+    def test_parse_text_lines_with_clock_and_kw_header(self):
+        """parse_text_lines must correctly identify header and parse records when columns are Clock and kW."""
+        lines = [
+            "Clock, kW, Voltage",
+            "2026-01-01 00:15, 100.5, 220.0",
+            "2026-01-01 00:30, 110.0, 221.0",
+        ]
+        df = parse_text_lines(lines, delimiter=',')
+        self.assertIsNotNone(df)
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df['Clock'].tolist(), ["2026-01-01 00:15", "2026-01-01 00:30"])
+        self.assertEqual(df['kW_Import'].tolist(), ["100.5", "110.0"])
+        self.assertEqual(df['Voltage'].tolist(), ["220.0", "221.0"])
+
+    def test_parse_excel_df_with_clock_and_kw_header(self):
+        """parse_excel_df must correctly identify header and parse records when columns are Clock and kW."""
+        df_raw = pd.DataFrame([
+            ["Clock", "kW", "Voltage"],
+            ["2026-01-01 00:15", "100.5", "220.0"],
+            ["2026-01-01 00:30", "110.0", "221.0"],
+        ])
+        df = parse_excel_df(df_raw)
+        self.assertIsNotNone(df)
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df['Clock'].tolist(), ["2026-01-01 00:15", "2026-01-01 00:30"])
+        self.assertEqual(df['kW_Import'].tolist(), ["100.5", "110.0"])
+        self.assertEqual(df['Voltage'].tolist(), ["220.0", "221.0"])
+
+    def test_load_file_csv_with_clock_and_kw_header(self):
+        """load_file must successfully load CSV with standard Clock and kW column headers."""
+        import io
+        from data_handler import load_file
+        content = b"Clock,kW,Voltage\n2026-01-01 00:15,100.5,220.0\n2026-01-01 00:30,110.0,221.0\n"
+        df = load_file(io.BytesIO(content), "csv")
+        self.assertIsNotNone(df)
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df['Clock'].tolist(), ["2026-01-01 00:15", "2026-01-01 00:30"])
+        self.assertEqual(df['kW_Import'].tolist(), ["100.5", "110.0"])
+
+
 if __name__ == '__main__':
     unittest.main()
