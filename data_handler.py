@@ -115,16 +115,16 @@ def sanitize_dataframe_for_csv(df: pd.DataFrame) -> pd.DataFrame:
         return df_clean
 
     # ทำความสะอาดข้อมูลเฉพาะคอลัมน์ที่เป็น string หรือ object
-    for col in df_clean.columns:
-        if df_clean[col].dtype == object or pd.api.types.is_string_dtype(df_clean[col]):
+    for idx in range(df_clean.shape[1]):
+        s = df_clean.iloc[:, idx]
+        if s.dtype == object or pd.api.types.is_string_dtype(s):
             # ⚡ Bolt Optimization: Use unique value dictionary mapping instead of slow row-by-row .map(func).
             # In large load profiles, object columns have low distinct cardinalities (e.g. Period_Detail, Anomaly_Type, Month).
             # Mapping only unique values avoids hundreds of thousands of redundant cell function calls.
-            s = df_clean[col]
             uniques = s.unique()
             mapping = {val: sanitize_csv_cell(val) for val in uniques}
             if any(isinstance(k, str) and k != v for k, v in mapping.items()):
-                df_clean[col] = s.map(mapping)
+                df_clean.iloc[:, idx] = s.map(mapping)
 
     return df_clean
 
