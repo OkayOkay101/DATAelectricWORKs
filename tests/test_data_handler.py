@@ -800,6 +800,41 @@ class TestDataHandler(unittest.TestCase):
 
         pd.testing.assert_frame_equal(actual, expected)
 
+    def test_parse_excel_df_separate_date_time_skips_redundant_unique_and_map(self):
+        # ⚡ Bolt: parse_excel_df must not call unique() again on filtered date/time series or map clean series.
+        df_raw = pd.DataFrame([
+            ["Date", "Time", "kW", "Voltage"],
+            ["01/01/2026", "00:15", "100.0", "220"],
+            ["01/01/2026", "00:30", "110.0", "221"],
+            ["Total", "Total", "1000.0", "220"],
+        ])
+        expected = pd.DataFrame({
+            "Clock": ["01/01/2026 00:15", "01/01/2026 00:30"],
+            "kW_Import": ["100.0", "110.0"],
+            "Voltage": ["220", "221"],
+        })
+
+        unique_calls = []
+        original_unique = pd.Series.unique
+
+        def tracking_unique(series):
+            unique_calls.append(series.name)
+            return original_unique(series)
+
+        map_calls = []
+        original_map = pd.Series.map
+
+        def tracking_map(series, *args, **kwargs):
+            map_calls.append(series.name)
+            return original_map(series, *args, **kwargs)
+
+        with patch.object(pd.Series, "unique", tracking_unique), patch.object(pd.Series, "map", tracking_map):
+            actual = parse_excel_df(df_raw)
+
+        pd.testing.assert_frame_equal(actual, expected)
+        self.assertLessEqual(len(unique_calls), 2, f"unique() was called {len(unique_calls)} times; should be <= 2")
+        self.assertLessEqual(len(map_calls), 2, f"map() was called {len(map_calls)} times; should be <= 2")
+
     def test_parse_excel_df_none_or_empty_returns_none(self):
         self.assertIsNone(parse_excel_df(None))
         self.assertIsNone(parse_excel_df(pd.DataFrame()))
