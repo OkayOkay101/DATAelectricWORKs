@@ -26,7 +26,8 @@ def _apply_tou_and_anomaly_cached(df, sensitivity, p_start, p_end, p_rate, op_ra
                 df_out[col] = df_out[col].astype(dtype)
         return df_out
 
-    df = df.copy()
+    # ⚡ Bolt Optimization: Use shallow copy to avoid copying all underlying column arrays
+    df = df.copy(deep=False)
 
     if 'Clock' not in df.columns:
         df['Clock'] = pd.NaT
@@ -37,7 +38,7 @@ def _apply_tou_and_anomaly_cached(df, sensitivity, p_start, p_end, p_rate, op_ra
         clock_series = pd.to_datetime(clock_series, errors='coerce')
 
     # If timezone-aware, convert to naive local wall-clock time so integer day/hour arithmetic matches local schedule
-    if getattr(clock_series.dt, 'tz', None) is not None:
+    if getattr(clock_series.dtype, 'tz', None) is not None:
         clock_series = clock_series.dt.tz_localize(None)
 
     # Scale non-nanosecond units (e.g. datetime64[s], datetime64[ms], datetime64[us]) to datetime64[ns]
@@ -54,26 +55,25 @@ def _apply_tou_and_anomaly_cached(df, sensitivity, p_start, p_end, p_rate, op_ra
     # 1970-01-01 was Thursday (weekday 3 in Python datetime: Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6)
     is_weekend = ((days + 3) % 7) >= 5
 
-    valid_clock_mask = clock_series.notna().to_numpy()
+    iNaT = np.iinfo(np.int64).min
+    valid_clock_mask = (ns != iNaT)
     is_weekend = is_weekend & valid_clock_mask
     df['Is_Weekend'] = is_weekend
 
+    n = len(df)
     if holiday_tuple:
         holiday_dt = pd.to_datetime(holiday_tuple, errors='coerce')
         valid_holidays = holiday_dt.dropna()
         if not valid_holidays.empty:
-            if getattr(valid_holidays, 'tz', None) is not None:
-                valid_holidays = valid_holidays.tz_localize(None)
-            elif getattr(getattr(valid_holidays, 'dt', None), 'tz', None) is not None:
+            if getattr(valid_holidays.dtype, 'tz', None) is not None:
                 valid_holidays = valid_holidays.dt.tz_localize(None)
             holiday_norm = valid_holidays.normalize() if hasattr(valid_holidays, 'normalize') else valid_holidays.dt.normalize()
-            holiday_ns = holiday_norm.astype('datetime64[ns]').to_numpy(dtype='int64')
-            norm_ns = days * NS_IN_DAY
-            is_holiday = np.isin(norm_ns, holiday_ns) & valid_clock_mask
+            holiday_days = holiday_norm.astype('datetime64[ns]').to_numpy(dtype='int64') // NS_IN_DAY
+            is_holiday = np.isin(days, holiday_days) & valid_clock_mask
         else:
-            is_holiday = np.zeros(len(df), dtype=bool)
+            is_holiday = np.zeros(n, dtype=bool)
     else:
-        is_holiday = np.zeros(len(df), dtype=bool)
+        is_holiday = np.zeros(n, dtype=bool)
     df['Is_Holiday'] = is_holiday
 
     curr_sec = (ns % NS_IN_DAY) // 1_000_000_000
@@ -82,7 +82,7 @@ def _apply_tou_and_anomaly_cached(df, sensitivity, p_start, p_end, p_rate, op_ra
     end_sec = p_end.hour * 3600 + p_end.minute * 60 + p_end.second
 
     if start_sec == end_sec:
-        is_peak_time = np.zeros(len(df), dtype=bool)
+        is_peak_time = np.zeros(n, dtype=bool)
     elif start_sec < end_sec:
         is_peak_time = (curr_sec >= start_sec) & (curr_sec < end_sec)
     else:
@@ -91,40 +91,37 @@ def _apply_tou_and_anomaly_cached(df, sensitivity, p_start, p_end, p_rate, op_ra
     is_peak_time = is_peak_time & valid_clock_mask
 
     # ⚡ เงื่อนไขใหม่: เริ่มต้นให้เป็น Off-Peak ทั้งหมด
+    holiday_condition = is_weekend | is_holiday
+    peak_condition = is_peak_time & (~holiday_condition)
+
     df['Period_Detail'] = 'Off-Peak'
-    df['Rate_THB'] = op_rate
+    if peak_condition.any():
+        df.loc[peak_condition, 'Period_Detail'] = 'On-Peak'
+    if holiday_condition.any():
+        df.loc[holiday_condition, 'Period_Detail'] = 'Holiday'
 
-    is_weekend_arr = df['Is_Weekend'].to_numpy()
-    is_holiday_arr = df['Is_Holiday'].to_numpy()
-
-    # เงื่อนไขที่ 1: ถ้าเป็นช่วงเวลา On-Peak และเป็นวันจันทร์-ศุกร์ (ไม่ใช่วันหยุดนักขัตฤกษ์) -> ให้เป็น On-Peak
-    peak_condition = is_peak_time & (~is_weekend_arr) & (~is_holiday_arr)
-    df.loc[peak_condition, 'Period_Detail'] = 'On-Peak'
-    df.loc[peak_condition, 'Rate_THB'] = p_rate
-
-    # เงื่อนไขที่ 2: ถ้าเป็นวันเสาร์-อาทิตย์ หรือเป็นวันหยุดต่างๆ -> ให้เป็น Holiday ตลอด 24 ชั่วโมง (00:00 - 24:00)
-    holiday_condition = is_weekend_arr | is_holiday_arr
-    df.loc[holiday_condition, 'Period_Detail'] = 'Holiday'
-    df.loc[holiday_condition, 'Rate_THB'] = op_rate  # ใช้เรทเดียวกับ Off-Peak ตามมาตรฐาน
+    # ⚡ Bolt Optimization: Vectorized Rate_THB via np.where bypassing repeated .loc Series assignments
+    rate_arr = np.where(peak_condition, p_rate, op_rate)
+    df['Rate_THB'] = rate_arr
 
     if 'kW_Import' not in df.columns:
         df['kW_Import'] = 0.0
     elif not pd.api.types.is_numeric_dtype(df['kW_Import']):
         df['kW_Import'] = pd.to_numeric(df['kW_Import'], errors='coerce').fillna(0.0)
-    else:
+    elif df['kW_Import'].isna().any():
         df['kW_Import'] = df['kW_Import'].fillna(0.0)
 
     if 'kWh_15min' not in df.columns:
         df['kWh_15min'] = df['kW_Import'] / 4.0
     elif not pd.api.types.is_numeric_dtype(df['kWh_15min']):
         df['kWh_15min'] = pd.to_numeric(df['kWh_15min'], errors='coerce').fillna(0.0)
-    else:
+    elif df['kWh_15min'].isna().any():
         df['kWh_15min'] = df['kWh_15min'].fillna(0.0)
 
-    df['Cost_THB'] = df['kWh_15min'] * df['Rate_THB']
+    df['Cost_THB'] = df['kWh_15min'].to_numpy() * rate_arr
 
     # ตรวจจับ Anomaly (ความผิดปกติ)
-    # ⚡ Bolt Optimization: Fast numpy array filtering for active load thresholding
+    # ⚡ Bolt Optimization: Fast numpy array filtering for active load thresholding and gated .loc
     kw_arr = df['kW_Import'].to_numpy(dtype='float64')
     active_mask = kw_arr > 0.05
     df['Anomaly_Type'] = 'ปกติ'
@@ -136,8 +133,12 @@ def _apply_tou_and_anomaly_cached(df, sensitivity, p_start, p_end, p_rate, op_ra
             std_v = 0.0
         upper = mean_v + (sensitivity * std_v)
         lower = max(0.01, mean_v - (sensitivity * std_v))
-        df.loc[(kw_arr > upper), 'Anomaly_Type'] = 'สูงกว่าเกณฑ์ (High)'
-        df.loc[(kw_arr < lower), 'Anomaly_Type'] = 'ไฟตก (Low)'
+        high_mask = kw_arr > upper
+        if high_mask.any():
+            df.loc[high_mask, 'Anomaly_Type'] = 'สูงกว่าเกณฑ์ (High)'
+        low_mask = kw_arr < lower
+        if low_mask.any():
+            df.loc[low_mask, 'Anomaly_Type'] = 'ไฟตก (Low)'
 
     return df
 

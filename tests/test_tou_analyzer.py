@@ -357,6 +357,51 @@ class TouFunctionalTests(unittest.TestCase):
         self.assertEqual(res['Period_Detail'].iloc[0], 'On-Peak')
         self.assertEqual(res['Anomaly_Type'].iloc[0], 'ปกติ')
 
+    def test_apply_tou_and_anomaly_vectorized_rate_and_shallow_copy(self):
+        """_apply_tou_and_anomaly_cached must use np.where and shallow copy for fast TOU rate calculation."""
+        import ast
+        analyzer_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'tou_analyzer.py'))
+        with open(analyzer_path, 'r', encoding='utf-8') as f:
+            tree = ast.parse(f.read())
+
+        found_where = False
+        found_shallow_copy = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == '_apply_tou_and_anomaly_cached':
+                for child in ast.walk(node):
+                    if (
+                        isinstance(child, ast.Call)
+                        and isinstance(child.func, ast.Attribute)
+                        and child.func.attr == 'where'
+                    ):
+                        found_where = True
+                    if (
+                        isinstance(child, ast.Call)
+                        and isinstance(child.func, ast.Attribute)
+                        and child.func.attr == 'copy'
+                    ):
+                        for kw in child.keywords:
+                            if kw.arg == 'deep' and isinstance(kw.value, ast.Constant) and kw.value.value is False:
+                                found_shallow_copy = True
+
+        self.assertTrue(found_where, '_apply_tou_and_anomaly_cached must use np.where for vectorized Rate_THB assignment')
+        self.assertTrue(found_shallow_copy, '_apply_tou_and_anomaly_cached must use copy(deep=False) to avoid duplicating all columns')
+
+        # Behavioral equality check
+        dates = pd.date_range('2026-10-16 00:00', periods=200, freq='15min')
+        df_in = pd.DataFrame({
+            'Clock': dates,
+            'kW_Import': [100.0] * 200,
+            'kWh_15min': [25.0] * 200,
+            'Voltage': [220.0] * 200,
+        })
+        before = df_in.copy(deep=True)
+        res = apply_tou_and_anomaly(df_in, 2.0, time(9, 0), time(22, 0), 5.0, 2.0, ['2026-10-16'])
+        assert_frame_equal(df_in, before)
+        self.assertEqual(len(res), 200)
+        self.assertIn('Rate_THB', res.columns)
+        self.assertIn('Period_Detail', res.columns)
+
 
 if __name__ == '__main__':
     unittest.main()
