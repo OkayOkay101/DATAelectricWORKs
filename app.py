@@ -625,6 +625,22 @@ with tab3:
 
     with st.container(border=True):
         st.markdown("#### ⚡ สรุปผลกระทบจากการเลื่อนเวลา (Before vs After)")
+        if not plot_old.empty:
+            min_c = plot_old['Clock'].min()
+            max_c = plot_old['Clock'].max()
+            scope_shift = (
+                f"{selected_snapshot} • {min_c:%d/%m/%Y %H:%M} ถึง {max_c:%d/%m/%Y %H:%M} ({len(plot_old):,} รายการ, {plot_old['Date'].nunique():,} วัน)"
+                if view_date == "ดูทั้งหมด (ตั้งแต่ต้นจนจบ)"
+                else f"ประจำวันที่ {sel_dt:%d/%m/%Y} ({day_name}) • {len(plot_old):,} รายการ"
+            )
+            rate_info = (
+                f"TOU (On-Peak {p_rate:.4f} / Off-Peak {op_rate:.4f} บาท/หน่วย)"
+                if rate_type == "TOU (Time of Use)"
+                else f"อัตราเดียว ({single_rate:.4f} บาท/หน่วย)"
+            )
+            st.caption(
+                f"🗓️ **ขอบเขตการจำลอง:** {scope_shift} • ⚡ **ระบบคิดเงิน:** {rate_info}"
+            )
         mc1, mc2, mc3, mc4 = st.columns(4)
         mc1.metric(
             "🔥 โหลดสูงสุดเปรียบเทียบ (Peak)",
