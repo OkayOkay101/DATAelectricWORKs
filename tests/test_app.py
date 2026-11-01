@@ -739,6 +739,9 @@ class TestApp(unittest.TestCase):
             self.assertEqual(len(scope_captions), 1, 'Expected scope context caption in Tab 4')
             self.assertIn('ภาพรวมข้อมูลทั้งหมด', scope_captions[0])
             self.assertIn('05/01/2026', scope_captions[0])
+            self.assertIn('🌐 ดูข้อมูลทั้งหมด (All Data)', scope_captions[0])
+            self.assertIn('TOU (On-Peak', scope_captions[0])
+            self.assertIn('Off-Peak', scope_captions[0])
 
             # 2. Switch summary mode to "รายวัน (Daily)"
             radios = [r for r in at.radio if 'ระดับการสรุปผล' in r.label or 'กำหนดช่วงเวลา (Custom)' in r.options]
@@ -765,6 +768,11 @@ class TestApp(unittest.TestCase):
             self.assertEqual(len(single_rate_banners), 2, 'Expected Single Rate simulation explanation banner in Tab 3 and Tab 4')
             self.assertIn('ค่าไฟฟ้าคงเดิม', single_rate_banners[0])
             self.assertIn('คิดเรทอัตราเดียว', single_rate_banners[0])
+
+            scope_captions_single = [c.value for c in at.caption if 'ขอบเขตข้อมูลที่แสดง' in c.value]
+            self.assertEqual(len(scope_captions_single), 1)
+            self.assertIn('อัตราเดียว', scope_captions_single[0])
+            self.assertIn('บาท/หน่วย', scope_captions_single[0])
         finally:
             if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
                 sys.modules['streamlit'] = mock_st

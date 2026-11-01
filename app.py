@@ -796,7 +796,15 @@ with tab4:
         st.info("ℹ️ ไม่พบข้อมูลการใช้ไฟฟ้าในช่วงเวลาที่เลือก กรุณาตรวจสอบหรือเลือกช่วงวันที่ใหม่")
     else:
         st.markdown("### 📊 สถานะปัจจุบัน (ก่อนจำลองเลื่อนเวลา)")
-        st.caption(f"🗓️ **ขอบเขตข้อมูลที่แสดง:** {scope_desc} • ข้อมูล {len(df_summary):,} รายการ ({df_summary['Date'].nunique():,} วัน)")
+        rate_info = (
+            f"TOU (On-Peak {p_rate:.4f} / Off-Peak {op_rate:.4f} บาท/หน่วย)"
+            if rate_type == "TOU (Time of Use)"
+            else f"อัตราเดียว ({single_rate:.4f} บาท/หน่วย)"
+        )
+        st.caption(
+            f"🗓️ **ขอบเขตข้อมูลที่แสดง:** {selected_snapshot} • {scope_desc} • ข้อมูล {len(df_summary):,} รายการ ({df_summary['Date'].nunique():,} วัน) • "
+            f"⚡ **ระบบคิดเงิน:** {rate_info}"
+        )
         orig_cost = df_summary['Cost_THB'].sum()
         peak_kw_summary = df_summary['kW_Import'].max()
 
