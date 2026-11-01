@@ -888,3 +888,64 @@ class TestApp(unittest.TestCase):
         finally:
             if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
                 sys.modules['streamlit'] = mock_st
+
+
+    def test_tab2_daily_insights_shows_scope_context_and_rate_info(self):
+        """แท็บ 2 (เจาะลึกรายวัน) ต้องแสดงคำอธิบายขอบเขตข้อมูลประจำวันและระบบคิดเงินในกล่องสรุปภาพรวม"""
+        import sys
+        mock_st = None
+        if 'streamlit' in sys.modules and not hasattr(sys.modules['streamlit'], '__path__'):
+            mock_st = sys.modules.pop('streamlit')
+
+        try:
+            from streamlit.testing.v1 import AppTest
+            import os
+            import io
+            import datetime
+
+            app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.py')
+            at = AppTest.from_file(app_path, default_timeout=30).run()
+
+            df = pd.DataFrame({
+                'Clock': [
+                    '2026-01-05 09:00:00',
+                    '2026-01-05 09:15:00',
+                    '2026-01-06 10:00:00',
+                ],
+                'kW_Import': [120.0, 150.0, 110.0],
+                'Voltage': [220.0, 220.0, 220.0],
+            })
+            buffer = io.BytesIO()
+            df.to_csv(buffer, index=False)
+            at.file_uploader[0].set_value([('tab2_scope_test.csv', buffer.getvalue(), 'text/csv')]).run()
+            self.assertFalse(at.exception, f'App execution failed: {at.exception}')
+
+            # 1. Tab 2 Executive container header should use Thai date format DD/MM/YYYY
+            tab2_headers = [m.value for m in at.markdown if 'สรุปภาพรวมพลังงานประจำวัน' in m.value]
+            self.assertEqual(len(tab2_headers), 1, 'Expected daily summary header in Tab 2')
+            self.assertIn('05/01/2026', tab2_headers[0])
+            self.assertIn('วันจันทร์', tab2_headers[0])
+
+            # 2. Scope context caption inside Tab 2 summary container under TOU
+            tab2_captions = [c.value for c in at.caption if 'ขอบเขตข้อมูลรายวัน:' in c.value]
+            self.assertEqual(len(tab2_captions), 1, 'Expected daily scope context caption in Tab 2')
+            self.assertIn('🌐 ดูข้อมูลทั้งหมด (All Data)', tab2_captions[0])
+            self.assertIn('05/01/2026', tab2_captions[0])
+            self.assertIn('วันจันทร์', tab2_captions[0])
+            self.assertIn('2 รายการ', tab2_captions[0])
+            self.assertIn('09:00 ถึง 09:15', tab2_captions[0])
+            self.assertIn('TOU (On-Peak', tab2_captions[0])
+            self.assertIn('Off-Peak', tab2_captions[0])
+
+            # 3. Switch rate to "อัตราเดียว (Single Rate)"
+            rate_radio = next(r for r in at.radio if 'ประเภทอัตราค่าไฟ' in r.label)
+            rate_radio.set_value('อัตราเดียว (Single Rate)').run()
+            self.assertFalse(at.exception, f'App execution failed on rate switch: {at.exception}')
+
+            tab2_captions_single = [c.value for c in at.caption if 'ขอบเขตข้อมูลรายวัน:' in c.value]
+            self.assertEqual(len(tab2_captions_single), 1)
+            self.assertIn('อัตราเดียว', tab2_captions_single[0])
+            self.assertIn('บาท/หน่วย', tab2_captions_single[0])
+        finally:
+            if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
+                sys.modules['streamlit'] = mock_st
