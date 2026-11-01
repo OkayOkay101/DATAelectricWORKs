@@ -949,6 +949,23 @@ class TestDataHandler(unittest.TestCase):
         sanitized_dt = sanitize_dataframe_for_csv(df_dt)
         pd.testing.assert_index_equal(sanitized_dt.index, dt_idx)
 
+    def test_sanitize_dataframe_for_csv_duplicate_columns_support(self):
+        """DataFrames with duplicate column names must have both headers and cells sanitized without AttributeError."""
+        from data_handler import sanitize_dataframe_for_csv
+        df = pd.DataFrame(
+            [["=cmd|' /C calc'!A0", "=1+1", 100], ["@danger", "-2+3", 200]],
+            columns=["=Col", "=Col", "Normal"]
+        )
+        sanitized = sanitize_dataframe_for_csv(df)
+
+        self.assertEqual(list(sanitized.columns), ["'=Col", "'=Col", "Normal"])
+        self.assertEqual(sanitized.iloc[0, 0], "'=cmd|' /C calc'!A0")
+        self.assertEqual(sanitized.iloc[0, 1], "'=1+1")
+        self.assertEqual(sanitized.iloc[0, 2], 100)
+        self.assertEqual(sanitized.iloc[1, 0], "'@danger")
+        self.assertEqual(sanitized.iloc[1, 1], "'-2+3")
+        self.assertEqual(sanitized.iloc[1, 2], 200)
+
     def test_parse_text_lines_preserves_12hr_pm_records(self):
         # 12-hour AM/PM timestamps must not be falsely dropped by unanchored 'p' filter
         lines = [
