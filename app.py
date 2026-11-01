@@ -446,7 +446,20 @@ with tab2:
                 )
 
         with st.container(border=True):
-            st.markdown(f"#### 📊 สรุปภาพรวมพลังงานประจำวันที่ {sel_date} ({day_name})")
+            st.markdown(f"#### 📊 สรุปภาพรวมพลังงานประจำวันที่ {sel_dt:%d/%m/%Y} ({day_name})")
+            if not day_df.empty:
+                min_c = day_df['Clock'].min()
+                max_c = day_df['Clock'].max()
+                rate_info = (
+                    f"TOU (On-Peak {p_rate:.4f} / Off-Peak {op_rate:.4f} บาท/หน่วย)"
+                    if rate_type == "TOU (Time of Use)"
+                    else f"อัตราเดียว ({single_rate:.4f} บาท/หน่วย)"
+                )
+                st.caption(
+                    f"🗓️ **ขอบเขตข้อมูลรายวัน:** {selected_snapshot} • ประจำวันที่ {sel_dt:%d/%m/%Y} ({day_name}) • "
+                    f"{min_c:%H:%M} ถึง {max_c:%H:%M} ({len(day_df):,} รายการ) • "
+                    f"⚡ **ระบบคิดเงิน:** {rate_info}"
+                )
             m_col1, m_col2, m_col3, m_col4 = st.columns(4)
             peak_day_kw = day_df['kW_Import'].max() if not day_df.empty else 0.0
             total_day_kwh = day_df['kWh_15min'].sum() if not day_df.empty else 0.0
