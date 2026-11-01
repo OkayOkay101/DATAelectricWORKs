@@ -276,7 +276,7 @@ def is_header_row(row_str):
     if not isinstance(row_str, str):
         row_str = str(row_str) if row_str is not None else ""
     l_lower = row_str.lower()
-    return (('clock' in l_lower and 'import' in l_lower) or
+    return (('clock' in l_lower and ('import' in l_lower or 'kw' in l_lower or 'demand' in l_lower or 'power' in l_lower or 'กำลังไฟฟ้า' in l_lower or 'พลังงาน' in l_lower)) or
            ('ch1' in l_lower and 'ch4' in l_lower) or
            ('date' in l_lower and ('clock' in l_lower or 'time' in l_lower)) or
            ('pea no' in l_lower and 'clock' in l_lower) or
@@ -288,6 +288,8 @@ def is_header_row(row_str):
            ('เวลา' in l_lower and 'kw' in l_lower))
 
 def parse_text_lines(lines, delimiter=','):
+    if lines is None:
+        return None
     iterator = iter(lines)
     header_row_idx = -1
     buffered_header = []
