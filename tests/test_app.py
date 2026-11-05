@@ -554,6 +554,40 @@ class TestApp(unittest.TestCase):
             if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
                 sys.modules['streamlit'] = mock_st
 
+    def test_tab1_overview_shows_onpeak_energy_share(self):
+        """แท็บ 1 (ภาพรวม) ต้องแสดงสัดส่วนพลังงานช่วง On-Peak (%) ให้เห็นโอกาสประหยัดค่าไฟในทันที"""
+        import sys
+        mock_st = None
+        if 'streamlit' in sys.modules and not hasattr(sys.modules['streamlit'], '__path__'):
+            mock_st = sys.modules.pop('streamlit')
+
+        try:
+            from streamlit.testing.v1 import AppTest
+            import os
+            import io
+
+            app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.py')
+            at = AppTest.from_file(app_path, default_timeout=30).run()
+
+            # วันศุกร์ 2026-01-02 เวลา 10:00 (อยู่ในช่วง On-Peak 09:00-22:00, ไม่ใช่วันหยุด)
+            df = pd.DataFrame({
+                'Clock': ['2026-01-02 10:00:00'],
+                'kW_Import': [100.0],
+                'Voltage': [220.0],
+            })
+            buffer = io.BytesIO()
+            df.to_csv(buffer, index=False)
+            at.file_uploader[0].set_value([('onpeak_share.csv', buffer.getvalue(), 'text/csv')]).run()
+            self.assertFalse(at.exception, f"App execution failed: {at.exception}")
+
+            onpeak_infos = [inf.value for inf in at.info if 'พลังงานช่วง On-Peak' in inf.value]
+            self.assertEqual(len(onpeak_infos), 1, "Expected On-Peak energy share glance in Tab 1 Overview")
+            self.assertIn('25.00 kWh', onpeak_infos[0], "On-Peak energy must be shown in kWh")
+            self.assertIn('100.0%', onpeak_infos[0], "On-Peak share percentage must be shown")
+        finally:
+            if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
+                sys.modules['streamlit'] = mock_st
+
     def test_tab2_daily_insights_shows_day_type_and_tou_context(self):
         """แท็บ 2 (เจาะลึกรายวัน) ต้องแสดงชื่อวันภาษาไทย ประเภทวัน (วันทำงาน/วันหยุด) และเงื่อนไขอัตราค่าไฟ TOU อย่างชัดเจน"""
         import sys
