@@ -278,13 +278,13 @@ def is_header_row(row_str):
     l_lower = row_str.lower()
     return (('clock' in l_lower and ('import' in l_lower or 'kw' in l_lower or 'demand' in l_lower or 'power' in l_lower or 'กำลังไฟฟ้า' in l_lower or 'พลังงาน' in l_lower)) or
            ('ch1' in l_lower and 'ch4' in l_lower) or
-           ('date' in l_lower and ('clock' in l_lower or 'time' in l_lower)) or
+           ('date' in l_lower and ('clock' in l_lower or 'time' in l_lower or 'kw' in l_lower or 'demand' in l_lower or 'power' in l_lower or 'กำลังไฟฟ้า' in l_lower)) or
            ('pea no' in l_lower and 'clock' in l_lower) or
            ('pea no' in l_lower and ('clock' in l_lower or 'datatime' in l_lower or 'datetime' in l_lower)) or
            (('datatime' in l_lower or 'datetime' in l_lower) and ('import' in l_lower or 'kw' in l_lower)) or
            ('time' in l_lower and (('active' in l_lower and 'power' in l_lower) or 'kw' in l_lower or 'import' in l_lower)) or
            ('เวลา' in l_lower and 'พลังงาน' in l_lower) or
-           ('วันที่' in l_lower and 'เวลา' in l_lower) or
+           ('วันที่' in l_lower and ('เวลา' in l_lower or 'kw' in l_lower or 'กำลังไฟฟ้า' in l_lower)) or
            ('เวลา' in l_lower and 'kw' in l_lower))
 
 def parse_text_lines(lines, delimiter=','):
@@ -383,11 +383,13 @@ def parse_text_lines(lines, delimiter=','):
                     max_val = cand_sum
                     best_idx = cand_idx
             kw_idx = best_idx
-            
-    if clock_idx == -1 or kw_idx == -1 or clock_idx == kw_idx:
+
+    # เวลาหลักใช้คอลัมน์ Clock ถ้ามี มิฉะนั้นใช้คอลัมน์ Date (วันที่) เป็นแหล่งเวลาแทน
+    time_idx = clock_idx if clock_idx != -1 else date_idx
+    if time_idx == -1 or kw_idx == -1 or time_idx == kw_idx:
         return None
-        
-    if date_idx != -1 and (date_idx == clock_idx or date_idx == kw_idx):
+
+    if date_idx != -1 and (date_idx == time_idx or date_idx == kw_idx):
         return None
         
     # 3. สกัดข้อมูลทีละบรรทัด
@@ -517,6 +519,7 @@ def parse_text_lines(lines, delimiter=','):
         has_invalid_c = c_clean.str.contains(invalid_clock_pattern, regex=True, na=False)
         mask_c = ~(has_invalid_c | (c_clean == ''))
 
+    mask_d = None
     if d_col is not None:
         re_date = re.compile(invalid_pattern)
         u_d = d_col.unique()
@@ -530,7 +533,13 @@ def parse_text_lines(lines, delimiter=','):
             d_clean = d_col.str.lower()
             has_invalid_d = d_clean.str.contains(invalid_pattern, regex=True, na=False)
             mask_d = ~(has_invalid_d | (d_clean == ''))
+
+    # หากไม่มีคอลัมน์ Clock แยกต่างหาก ให้ใช้คอลัมน์ Date (วันที่) เป็นแหล่งเวลาแทน
+    use_date_as_clock = (clock_idx == -1 and d_col is not None)
+    if d_col is not None and not use_date_as_clock:
         valid_mask = mask_c & mask_d
+    elif d_col is not None:
+        valid_mask = mask_d
     else:
         valid_mask = mask_c
 
@@ -539,9 +548,10 @@ def parse_text_lines(lines, delimiter=','):
     kw_valid = kw_col[valid_mask_np]
     v_valid = v_col[valid_mask_np]
 
-    if d_col is not None:
-        d_valid = d_col[valid_mask_np]
-        merged_clock = d_valid + ' ' + c_valid
+    if use_date_as_clock:
+        merged_clock = d_col[valid_mask_np]
+    elif d_col is not None:
+        merged_clock = d_col[valid_mask_np] + ' ' + c_valid
     else:
         merged_clock = c_valid
 
@@ -626,16 +636,22 @@ def parse_excel_df(df_raw):
                     best_col = cand
             kw_col = best_col
         
-    if not clock_col or not kw_col or clock_col == kw_col:
+    # เวลาหลักใช้คอลัมน์ Clock ถ้ามี มิฉะนั้นใช้คอลัมน์ Date (วันที่) เป็นแหล่งเวลาแทน
+    time_col = clock_col if clock_col else date_col
+    if not time_col or not kw_col or time_col == kw_col:
         return None
         
-    if date_col and (date_col == clock_col or date_col == kw_col):
+    # คอลัมน์วันที่กับคอลัมน์เวลาต้องไม่ใช่คอลัมน์เดียวกัน (เมื่อมีคอลัมน์ Clock แยกอยู่)
+    if clock_col and date_col and date_col == clock_col:
         return None
         
     invalid_pattern = r'^(?:total.*|p|op|h|kwh|nan)$'
     invalid_clock_pattern = r'^(?:total.*|p|op|h|kwh|nan|dnv/err)$'
 
-    clock_series = df[clock_col]
+    if clock_col is not None:
+        clock_series = df[clock_col]
+    else:
+        clock_series = pd.Series(pd.NA, index=df.index)
     kw_series = df[kw_col]
     v_series = df[v_col] if v_col else None
     date_series = df[date_col] if date_col else None
@@ -697,7 +713,9 @@ def parse_excel_df(df_raw):
             has_invalid_c = c_clean.str.contains(invalid_clock_pattern, regex=True, na=False)
             mask_c = ~(has_invalid_c | (c_clean == ''))
 
-    if date_series is not None:
+    # หากไม่มีคอลัมน์ Clock แยกต่างหาก ให้ใช้คอลัมน์ Date (วันที่) เป็นแหล่งเวลาแทน
+    use_date_as_clock = (clock_col is None and date_col is not None)
+    if date_series is not None and not use_date_as_clock:
         re_date = re.compile(invalid_pattern)
         u_d = date_series.unique()
         map_d = {}
@@ -709,6 +727,18 @@ def parse_excel_df(df_raw):
                 map_d[v] = False if (not s or (s[0] in 'tpohkn' and re_date.match(s))) else True
         mask_d = date_series.map(map_d).fillna(False).astype(bool)
         valid_mask = mask_c & mask_d
+    elif date_series is not None:
+        re_date = re.compile(invalid_pattern)
+        u_d = date_series.unique()
+        map_d = {}
+        for v in u_d:
+            if pd.isna(v):
+                map_d[v] = False
+            else:
+                s = str(v).strip().lower()
+                map_d[v] = False if (not s or (s[0] in 'tpohkn' and re_date.match(s))) else True
+        mask_d = date_series.map(map_d).fillna(False).astype(bool)
+        valid_mask = mask_d
     else:
         valid_mask = mask_c
 
@@ -717,7 +747,7 @@ def parse_excel_df(df_raw):
     kw_valid = kw_series[valid_mask_np]
     v_valid = v_series[valid_mask_np] if v_series is not None else 220.0
 
-    if date_series is not None:
+    if date_series is not None and not use_date_as_clock:
         date_valid = date_series[valid_mask_np]
         # ⚡ Bolt Optimization: Reuse precomputed unique date/clock values and bypass
         # redundant Series.map() calls when timestamps are already clean strings.
@@ -738,6 +768,15 @@ def parse_excel_df(df_raw):
             clock_clean = clock_valid.astype(str) if clock_valid.dtype != object else clock_valid
 
         merged_clock = date_clean + ' ' + clock_clean
+    elif date_series is not None:
+        # คอลัมน์ Date (วันที่) คือแหล่งเวลาเอง
+        date_valid = date_series[valid_mask_np]
+        u_d = u_d if 'u_d' in locals() and u_d is not None else date_valid.unique()
+        d_strip_map = {v: str(v).strip() for v in u_d}
+        if any(not isinstance(v, str) or v != d_strip_map[v] for v in u_d):
+            merged_clock = date_valid.map(d_strip_map).astype(str)
+        else:
+            merged_clock = date_valid.astype(str) if date_valid.dtype != object else date_valid
     else:
         merged_clock = clock_valid
 

@@ -2286,6 +2286,28 @@ class TestDataHandlerEdgeCases(unittest.TestCase):
         self.assertEqual(df['Clock'].tolist(), ["2026-01-01 00:15", "2026-01-01 00:30"])
         self.assertEqual(df['kW_Import'].tolist(), ["100.5", "110.0"])
 
+    def test_load_file_date_column_as_clock_source(self):
+        """CSV whose only time column is 'Date' (full datetime) must load with Date as the clock source."""
+        import io
+        from data_handler import load_file
+        content = b"Date,kW_Import,Voltage\n2026-01-01 10:00:00,100.5,220.0\n2026-01-01 10:15:00,110.0,221.0\n"
+        df = load_file(io.BytesIO(content), "csv")
+        self.assertIsNotNone(df, "load_file must accept a Date-only time column")
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df['Clock'].tolist(), ["2026-01-01 10:00:00", "2026-01-01 10:15:00"])
+        self.assertEqual(df['kW_Import'].tolist(), ["100.5", "110.0"])
+
+    def test_load_file_thai_วันที่_column_as_clock_source(self):
+        """CSV whose only time column is 'วันที่' must load with วันที่ as the clock source."""
+        import io
+        from data_handler import load_file
+        content = ("วันที่,kW_Import,Voltage\n2026-01-01 10:00:00,100.5,220.0\n2026-01-01 10:15:00,110.0,221.0\n").encode('utf-8')
+        df = load_file(io.BytesIO(content), "csv")
+        self.assertIsNotNone(df, "load_file must accept a วันที่-only time column")
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df['Clock'].tolist(), ["2026-01-01 10:00:00", "2026-01-01 10:15:00"])
+        self.assertEqual(df['kW_Import'].tolist(), ["100.5", "110.0"])
+
 
 if __name__ == '__main__':
     unittest.main()
