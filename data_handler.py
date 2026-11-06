@@ -536,6 +536,9 @@ def parse_text_lines(lines, delimiter=','):
 
     # หากไม่มีคอลัมน์ Clock แยกต่างหาก ให้ใช้คอลัมน์ Date (วันที่) เป็นแหล่งเวลาแทน
     use_date_as_clock = (clock_idx == -1 and d_col is not None)
+    # ถ้า Date เป็นเวลาหลัก ต้องมีเวลาในค่า (เช่น 10:00) มิฉะนั้นแถวของวันเดียวกันจะถูกยุบเป็นแถวเดียวตอน dedupe
+    if use_date_as_clock and not d_col.astype(str).str.contains(':', regex=False).any():
+        return None
     if d_col is not None and not use_date_as_clock:
         valid_mask = mask_c & mask_d
     elif d_col is not None:
@@ -715,6 +718,9 @@ def parse_excel_df(df_raw):
 
     # หากไม่มีคอลัมน์ Clock แยกต่างหาก ให้ใช้คอลัมน์ Date (วันที่) เป็นแหล่งเวลาแทน
     use_date_as_clock = (clock_col is None and date_col is not None)
+    # ถ้า Date เป็นเวลาหลัก ต้องมีเวลาในค่า (เช่น 10:00) มิฉะนั้นแถวของวันเดียวกันจะถูกยุบเป็นแถวเดียวตอน dedupe
+    if use_date_as_clock and not date_series.astype(str).str.contains(':', regex=False).any():
+        return None
     if date_series is not None and not use_date_as_clock:
         re_date = re.compile(invalid_pattern)
         u_d = date_series.unique()
