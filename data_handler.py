@@ -680,6 +680,7 @@ def parse_excel_df(df_raw):
     use_byte_gate = type(sample_val) is str and len(sample_val) in (16, 19)
 
     mask_c = None
+    clock_all_valid = False
     if not use_byte_gate:
         u_c = clock_series.unique()
         if len(u_c) <= len(clock_series) * 0.5:
@@ -690,16 +691,15 @@ def parse_excel_df(df_raw):
                 else:
                     s = str(v).strip().lower()
                     map_c[v] = False if (not s or (s[0] in 'tpohknd' and re_clock.match(s))) else True
-            # ⚡ Bolt Optimization: When every unique clock value is valid, the full-column
-            # Series.map(dict).fillna(False).astype(bool) is a constant-True mask that costs
-            # ~8-13ms per 200k rows. Detect the all-valid case on the tiny unique set and
-            # skip the map entirely, otherwise fall back to the exact legacy mapping.
+            # ⚡ Bolt Optimization: When every unique clock value is valid (the common case for
+            # clean load profiles), skip the full-series dict .map() lookup (~25ms per 500k rows)
+            # and treat the whole column as valid.
             if all(map_c.values()):
-                mask_c = pd.Series(True, index=clock_series.index)
+                clock_all_valid = True
             else:
                 mask_c = clock_series.map(map_c).fillna(False).astype(bool)
 
-    if mask_c is None:
+    if mask_c is None and not clock_all_valid:
         # ⚡ Bolt Optimization: High-cardinality clock columns (one unique timestamp per row)
         # previously ran full-series .astype(str).str.strip() .str.lower() .str.contains(regex)
         # on every row (~94ms per 200k rows). Every invalid pattern starts with an ASCII letter
@@ -728,7 +728,9 @@ def parse_excel_df(df_raw):
     # ถ้า Date เป็นเวลาหลัก ต้องมีเวลาในค่า (เช่น 10:00) มิฉะนั้นแถวของวันเดียวกันจะถูกยุบเป็นแถวเดียวตอน dedupe
     if use_date_as_clock and not date_series.astype(str).str.contains(':', regex=False).any():
         return None
-    if date_series is not None and not use_date_as_clock:
+    date_all_valid = False
+    mask_d = None
+    if date_series is not None:
         re_date = re.compile(invalid_pattern)
         u_d = date_series.unique()
         map_d = {}
@@ -738,30 +740,30 @@ def parse_excel_df(df_raw):
             else:
                 s = str(v).strip().lower()
                 map_d[v] = False if (not s or (s[0] in 'tpohkn' and re_date.match(s))) else True
+        # ⚡ Bolt Optimization: Skip the full-series dict .map() lookup for the date column when
+        # every unique date is valid (~25ms per 500k rows), matching the clock fast path above.
         if all(map_d.values()):
-            mask_d = pd.Series(True, index=date_series.index)
+            date_all_valid = True
         else:
             mask_d = date_series.map(map_d).fillna(False).astype(bool)
-        valid_mask = mask_c & mask_d
-    elif date_series is not None:
-        re_date = re.compile(invalid_pattern)
-        u_d = date_series.unique()
-        map_d = {}
-        for v in u_d:
-            if pd.isna(v):
-                map_d[v] = False
-            else:
-                s = str(v).strip().lower()
-                map_d[v] = False if (not s or (s[0] in 'tpohkn' and re_date.match(s))) else True
-        if all(map_d.values()):
-            mask_d = pd.Series(True, index=date_series.index)
-        else:
-            mask_d = date_series.map(map_d).fillna(False).astype(bool)
-        valid_mask = mask_d
-    else:
-        valid_mask = mask_c
 
-    valid_mask_np = valid_mask.to_numpy()
+    n_rows = len(df)
+    if use_date_as_clock and date_all_valid:
+        valid_mask_np = np.ones(n_rows, dtype=bool)
+    elif clock_all_valid and not use_date_as_clock and (date_series is None or date_all_valid):
+        valid_mask_np = np.ones(n_rows, dtype=bool)
+    else:
+        if mask_c is None:
+            mask_c = True
+        if date_series is None or use_date_as_clock:
+            valid_mask = mask_d if use_date_as_clock else mask_c
+        elif date_all_valid:
+            valid_mask = mask_c
+        elif clock_all_valid:
+            valid_mask = mask_d
+        else:
+            valid_mask = mask_c & mask_d
+        valid_mask_np = valid_mask.to_numpy() if hasattr(valid_mask, 'to_numpy') else np.asarray(valid_mask)
     clock_valid = clock_series[valid_mask_np]
     kw_valid = kw_series[valid_mask_np]
     v_valid = v_series[valid_mask_np] if v_series is not None else 220.0
