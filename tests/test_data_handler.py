@@ -18,7 +18,7 @@ sys.modules['streamlit'] = MockSt()
 
 import pandas as pd
 import numpy as np
-from data_handler import parse_text_lines, parse_excel_df, preprocess_data, get_usage_snapshots
+from data_handler import parse_text_lines, parse_excel_df, preprocess_data, get_usage_snapshots, _clean_numeric_column
 
 class TestDataHandler(unittest.TestCase):
 
@@ -1243,6 +1243,123 @@ class TestDataHandler(unittest.TestCase):
         self.assertTrue(found_iinfo, "preprocess_data should detect NaT via the int64 iNaT sentinel")
         self.assertTrue(found_civil_constant, "preprocess_data should use civil-from-days integer arithmetic")
 
+    def test_preprocess_data_astype_float64_fast_path_parity(self):
+        # ⚡ Bolt: astype(np.float64) fast path for clean numeric strings must produce
+        # identical results to the legacy pd.to_numeric(errors='coerce') behavior.
+        from data_handler import fast_parse_datetime
+
+        df_in = pd.DataFrame({
+            'Clock': ['01/01/2026 00:15', '01/01/2026 00:30', '01/01/2026 00:45'],
+            'kW_Import': ['100.5', '110.2', '120.0'],
+            'Voltage': ['220.0', '221.0', '219.5'],
+        }, index=range(100, 103))
+
+        # Legacy expected computation using pd.to_numeric (old behavior)
+        expected = df_in.copy(deep=True)
+        num_kw = pd.to_numeric(expected['kW_Import'], errors='coerce')
+        mask_kw = num_kw.isna()
+        if mask_kw.any():
+            clean_str_kw = expected.loc[mask_kw, 'kW_Import'].astype(str).str.replace(r'[^\d.-]', '', regex=True)
+            num_kw.loc[mask_kw] = pd.to_numeric(clean_str_kw, errors='coerce')
+        expected['kW_Import'] = num_kw.fillna(0)
+        num_v = pd.to_numeric(expected['Voltage'], errors='coerce')
+        mask_v = num_v.isna()
+        if mask_v.any():
+            clean_str_v = expected.loc[mask_v, 'Voltage'].astype(str).str.replace(r'[^\d.-]', '', regex=True)
+            num_v.loc[mask_v] = pd.to_numeric(clean_str_v, errors='coerce')
+        expected['Voltage'] = num_v.fillna(220.0)
+        expected['Clock'] = fast_parse_datetime(expected['Clock'], dayfirst=True)
+        expected = expected.reset_index(drop=True)
+        expected['Date'] = expected['Clock'].dt.normalize()
+        c_dt = expected['Clock'].dt
+        ym = c_dt.year * 100 + c_dt.month
+        ym_dict = {v: f'{v // 100:04d}-{v % 100:02d}' for v in ym.unique()}
+        expected['Month'] = ym.map(ym_dict)
+        hm = c_dt.hour * 60 + c_dt.minute
+        hm_dict = {v: f'{v // 60:02d}:{v % 60:02d}' for v in hm.unique()}
+        expected['Time_Str'] = hm.map(hm_dict)
+        expected['kWh_15min'] = expected['kW_Import'] / 4.0
+
+        pd.testing.assert_frame_equal(preprocess_data(df_in), expected)
+
+    def test_preprocess_data_astype_float64_fast_path_with_invalid_values(self):
+        # ⚡ Bolt: fallback path (invalid/non-numeric strings) must match legacy behavior exactly.
+        from data_handler import fast_parse_datetime
+
+        df_in = pd.DataFrame({
+            'Clock': ['01/01/2026 00:15', '01/01/2026 00:30', '01/01/2026 00:45'],
+            'kW_Import': ['100.5', 'abc', ''],          # invalid values trigger fallback
+            'Voltage': ['220.0', 'xyz', '219.5'],       # invalid values trigger fallback
+        }, index=range(200, 203))
+
+        # Legacy expected computation using pd.to_numeric (old behavior)
+        expected = df_in.copy(deep=True)
+        num_kw = pd.to_numeric(expected['kW_Import'], errors='coerce')
+        mask_kw = num_kw.isna()
+        if mask_kw.any():
+            clean_str_kw = expected.loc[mask_kw, 'kW_Import'].astype(str).str.replace(r'[^\d.-]', '', regex=True)
+            num_kw.loc[mask_kw] = pd.to_numeric(clean_str_kw, errors='coerce')
+        expected['kW_Import'] = num_kw.fillna(0)
+        num_v = pd.to_numeric(expected['Voltage'], errors='coerce')
+        mask_v = num_v.isna()
+        if mask_v.any():
+            clean_str_v = expected.loc[mask_v, 'Voltage'].astype(str).str.replace(r'[^\d.-]', '', regex=True)
+            num_v.loc[mask_v] = pd.to_numeric(clean_str_v, errors='coerce')
+        expected['Voltage'] = num_v.fillna(220.0)
+        expected['Clock'] = fast_parse_datetime(expected['Clock'], dayfirst=True)
+        expected = expected.reset_index(drop=True)
+        expected['Date'] = expected['Clock'].dt.normalize()
+        c_dt = expected['Clock'].dt
+        ym = c_dt.year * 100 + c_dt.month
+        ym_dict = {v: f'{v // 100:04d}-{v % 100:02d}' for v in ym.unique()}
+        expected['Month'] = ym.map(ym_dict)
+        hm = c_dt.hour * 60 + c_dt.minute
+        hm_dict = {v: f'{v // 60:02d}:{v % 60:02d}' for v in hm.unique()}
+        expected['Time_Str'] = hm.map(hm_dict)
+        expected['kWh_15min'] = expected['kW_Import'] / 4.0
+
+        pd.testing.assert_frame_equal(preprocess_data(df_in), expected)
+
+    def test_preprocess_data_astype_fast_path_integer_strings_parity(self):
+        # ⚡ Bolt: clean integer strings must yield int64 (matching pd.to_numeric), NOT float64.
+        # The previous float64-only fast path wrongly cast these to float64, breaking dtype parity.
+        from data_handler import fast_parse_datetime
+
+        df_in = pd.DataFrame({
+            'Clock': ['01/01/2026 00:15', '01/01/2026 00:30', '01/01/2026 00:45'],
+            'kW_Import': ['100', '110', '120'],
+            'Voltage': ['220', '221', '219'],
+        }, index=range(300, 303))
+
+        expected = df_in.copy(deep=True)
+        num_kw = pd.to_numeric(expected['kW_Import'], errors='coerce')
+        mask_kw = num_kw.isna()
+        if mask_kw.any():
+            clean_str_kw = expected.loc[mask_kw, 'kW_Import'].astype(str).str.replace(r'[^\d.-]', '', regex=True)
+            num_kw.loc[mask_kw] = pd.to_numeric(clean_str_kw, errors='coerce')
+        expected['kW_Import'] = num_kw.fillna(0)
+        num_v = pd.to_numeric(expected['Voltage'], errors='coerce')
+        mask_v = num_v.isna()
+        if mask_v.any():
+            clean_str_v = expected.loc[mask_v, 'Voltage'].astype(str).str.replace(r'[^\d.-]', '', regex=True)
+            num_v.loc[mask_v] = pd.to_numeric(clean_str_v, errors='coerce')
+        expected['Voltage'] = num_v.fillna(220.0)
+        expected['Clock'] = fast_parse_datetime(expected['Clock'], dayfirst=True)
+        expected = expected.reset_index(drop=True)
+        expected['Date'] = expected['Clock'].dt.normalize()
+        c_dt = expected['Clock'].dt
+        ym = c_dt.year * 100 + c_dt.month
+        ym_dict = {v: f'{v // 100:04d}-{v % 100:02d}' for v in ym.unique()}
+        expected['Month'] = ym.map(ym_dict)
+        hm = c_dt.hour * 60 + c_dt.minute
+        hm_dict = {v: f'{v // 60:02d}:{v % 60:02d}' for v in hm.unique()}
+        expected['Time_Str'] = hm.map(hm_dict)
+        expected['kWh_15min'] = expected['kW_Import'] / 4.0
+
+        pd.testing.assert_frame_equal(preprocess_data(df_in), expected)
+        self.assertEqual(preprocess_data(df_in)['kW_Import'].dtype, np.int64)
+        self.assertEqual(preprocess_data(df_in)['Voltage'].dtype, np.int64)
+
     def test_sanitize_filename_path_traversal(self):
         from data_handler import sanitize_filename
         self.assertEqual(sanitize_filename("../../../../etc/passwd.csv"), "passwd.csv")
@@ -2285,6 +2402,28 @@ class TestDataHandlerEdgeCases(unittest.TestCase):
         self.assertEqual(len(df), 2)
         self.assertEqual(df['Clock'].tolist(), ["2026-01-01 00:15", "2026-01-01 00:30"])
         self.assertEqual(df['kW_Import'].tolist(), ["100.5", "110.0"])
+
+
+class TestCleanNumericColumn(unittest.TestCase):
+    def test_python_floats_in_object_column_keep_decimals(self):
+        s = pd.Series([100.7, 200.0], dtype=object)
+        out = _clean_numeric_column(s, 0)
+        self.assertEqual(out.tolist(), [100.7, 200.0])
+        self.assertEqual(out.dtype, np.float64)
+
+    def test_mixed_float_and_text_keeps_decimals(self):
+        s = pd.Series([100.7, "200"], dtype=object)
+        out = _clean_numeric_column(s, 0)
+        self.assertEqual(out.tolist(), [100.7, 200.0])
+
+    def test_text_integers_stay_int64(self):
+        out = _clean_numeric_column(pd.Series(["100", " 200 "]), 0)
+        self.assertEqual(out.tolist(), [100, 200])
+        self.assertEqual(out.dtype, np.int64)
+
+    def test_text_with_junk_and_nan_fill(self):
+        out = _clean_numeric_column(pd.Series(["1,234", "abc", None], dtype=object), 220.0)
+        self.assertEqual(out.tolist(), [1234.0, 220.0, 220.0])
 
 
 if __name__ == '__main__':

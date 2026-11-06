@@ -1078,6 +1078,43 @@ def _empty_preprocessed_df(template_df=None):
     return df_out.iloc[:0]
 
 
+def _clean_numeric_column(series, fill_value):
+    """Convert a column to numeric mirroring pd.to_numeric(errors='coerce') + fillna exactly,
+    including the int64 vs float64 output dtype.
+
+    pd.to_numeric returns int64 only for clean integer-formatted input (int64 dtype, or object
+    strings such as '100' / ' 100 '); everything else (float64, '100.0', '100.5', values with NaN)
+    yields float64. astype(np.int64) succeeds exactly in the int64 cases and astype(np.float64)
+    succeeds exactly in the float64 cases, so the result dtype matches pd.to_numeric while using
+    the faster C cast. Already-numeric int64/float64 columns are returned as-is (to_numeric is
+    identity on them); exotic dtypes fall back to pd.to_numeric. fillna is skipped when no NaN
+    exists to avoid an unnecessary copy.
+    """
+    if series.dtype == np.object_ or pd.api.types.is_string_dtype(series):
+        # int64 cast only when every non-null value is text: astype(int64) silently truncates
+        # Python floats (100.7 -> 100), which pd.to_numeric would keep as float64.
+        try:
+            if pd.api.types.infer_dtype(series, skipna=True) != "string":
+                raise ValueError("non-text values present")
+            num = series.astype(np.int64)
+        except (ValueError, TypeError):
+            try:
+                num = series.astype(np.float64)
+            except (ValueError, TypeError):
+                num = pd.to_numeric(series, errors='coerce')
+                mask = num.isna()
+                if mask.any():
+                    cleaned = series.loc[mask].astype(str).str.replace(r'[^\d.-]', '', regex=True)
+                    num.loc[mask] = pd.to_numeric(cleaned, errors='coerce')
+    elif series.dtype == np.int64 or series.dtype == np.float64:
+        num = series
+    else:
+        num = pd.to_numeric(series, errors='coerce')
+    if num.isna().any():
+        return num.fillna(fill_value)
+    return num
+
+
 @st.cache_data
 def preprocess_data(df, kw_max=DEFAULT_OUTLIER_KW_MAX, v_max=DEFAULT_OUTLIER_V_MAX):
     if df is None or df.empty:
@@ -1095,20 +1132,11 @@ def preprocess_data(df, kw_max=DEFAULT_OUTLIER_KW_MAX, v_max=DEFAULT_OUTLIER_V_M
         df['Voltage'] = 220.0
     
     # ล้างข้อมูลให้เหลือเฉพาะตัวเลข
-    # ⚡ Bolt Optimization: Attempt to_numeric first, and only use regex cleanup for failed values
-    num_kw = pd.to_numeric(df['kW_Import'], errors='coerce')
-    mask_kw = num_kw.isna()
-    if mask_kw.any():
-        clean_str_kw = df.loc[mask_kw, 'kW_Import'].astype(str).str.replace(r'[^\d.-]', '', regex=True)
-        num_kw.loc[mask_kw] = pd.to_numeric(clean_str_kw, errors='coerce')
-    df['kW_Import'] = num_kw.fillna(0)
-    
-    num_v = pd.to_numeric(df['Voltage'], errors='coerce')
-    mask_v = num_v.isna()
-    if mask_v.any():
-        clean_str_v = df.loc[mask_v, 'Voltage'].astype(str).str.replace(r'[^\d.-]', '', regex=True)
-        num_v.loc[mask_v] = pd.to_numeric(clean_str_v, errors='coerce')
-    df['Voltage'] = num_v.fillna(220.0)
+    # ⚡ Bolt Optimization: astype fast path mirroring pd.to_numeric(errors='coerce') + fillna
+    # exactly (including int64 vs float64 dtype), skipping the conversion entirely for already-numeric
+    # columns and gating fillna behind isna().any() to skip the copy when no NaN values exist.
+    df['kW_Import'] = _clean_numeric_column(df['kW_Import'], 0)
+    df['Voltage'] = _clean_numeric_column(df['Voltage'], 220.0)
     
     # ตัด Outlier (แสดงเตือนแทนการลบทิ้ง)
     outlier_mask = (df['kW_Import'] >= kw_max) | (df['Voltage'] >= v_max)
