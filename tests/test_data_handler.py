@@ -685,6 +685,26 @@ class TestDataHandler(unittest.TestCase):
         self.assertEqual(df.iloc[0]['kW_Import'], 100.5)
         self.assertEqual(df.iloc[0]['Voltage'], 220.0)
 
+    def test_parse_excel_df_all_valid_date_time_constant_mask_parity(self):
+        # ⚡ Bolt: when every unique Date/Time value is valid, parse_excel_df skips the
+        # per-row Series.map() validation and returns a constant-True mask. The resulting
+        # table must be byte-for-byte identical to the legacy per-row mapping output.
+        dates = pd.date_range('2026-01-01', periods=300, freq='15min')
+        date_str = dates.strftime('%d/%m/%Y')
+        time_str = dates.strftime('%H:%M')
+        kw = [f"{i}.5" for i in range(len(dates))]
+        df_raw = pd.DataFrame(
+            [['Date', 'Time', 'kW_Import']] + list(zip(date_str, time_str, kw))
+        )
+        df = parse_excel_df(df_raw)
+        self.assertIsNotNone(df)
+        expected = pd.DataFrame({
+            'Clock': (pd.Series(date_str) + ' ' + pd.Series(time_str)).tolist(),
+            'kW_Import': kw,
+            'Voltage': 220.0,
+        })
+        pd.testing.assert_frame_equal(df.reset_index(drop=True), expected)
+
     def test_parse_text_lines_prefers_kw_over_kwh_column(self):
         # A cumulative kWh column contains "kw" as a substring and often has a
         # larger sum, but it must never be selected as the instantaneous kW value.
