@@ -588,6 +588,50 @@ class TestApp(unittest.TestCase):
             if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
                 sys.modules['streamlit'] = mock_st
 
+    def test_anomaly_markers_use_palette_colors_and_distinct_symbols(self):
+        """จุดผิดปกติต้องใช้ชุดสีกลาง (แดง/น้ำเงิน) และแยกด้วยรูปทรง ไม่พึ่งพาสีอย่างเดียว"""
+        import sys
+        mock_st = None
+        if 'streamlit' in sys.modules and not hasattr(sys.modules['streamlit'], '__path__'):
+            mock_st = sys.modules.pop('streamlit')
+
+        try:
+            from streamlit.testing.v1 import AppTest
+            import os
+            import io
+            import json
+
+            app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.py')
+            at = AppTest.from_file(app_path, default_timeout=30).run()
+
+            # 8 ค่าปกติ + ไฟกระชาก 500 kW + ไฟตก 0 kW -> ต้องมีจุดผิดปกติ 2 ประเภท
+            df = pd.DataFrame({
+                'Clock': [
+                    '2026-01-05 10:00:00', '2026-01-05 10:15:00', '2026-01-05 10:30:00',
+                    '2026-01-05 10:45:00', '2026-01-05 11:00:00', '2026-01-05 11:15:00',
+                    '2026-01-05 11:30:00', '2026-01-05 11:45:00', '2026-01-05 12:00:00',
+                    '2026-01-05 12:15:00',
+                ],
+                'kW_Import': [100.0] * 8 + [500.0, 0.0],
+                'Voltage': [220.0] * 10,
+            })
+            buffer = io.BytesIO()
+            df.to_csv(buffer, index=False)
+            at.file_uploader[0].set_value([('palette_anomaly.csv', buffer.getvalue(), 'text/csv')]).run()
+            self.assertFalse(at.exception, f"App execution failed: {at.exception}")
+
+            spec = json.loads(at.get('plotly_chart')[0].proto.spec)
+            markers = {t.get('name'): t.get('marker', {}) for t in spec.get('data', []) if t.get('mode') == 'markers'}
+            self.assertIn('สูงกว่าเกณฑ์', markers, "Expected high anomaly marker trace")
+            self.assertIn('ไฟตก', markers, "Expected low anomaly marker trace")
+            self.assertEqual(markers['สูงกว่าเกณฑ์'].get('color'), '#e63946')
+            self.assertEqual(markers['สูงกว่าเกณฑ์'].get('symbol'), 'triangle-up')
+            self.assertEqual(markers['ไฟตก'].get('color'), '#0077b6')
+            self.assertEqual(markers['ไฟตก'].get('symbol'), 'triangle-down')
+        finally:
+            if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
+                sys.modules['streamlit'] = mock_st
+
     def test_tab2_daily_insights_shows_day_type_and_tou_context(self):
         """แท็บ 2 (เจาะลึกรายวัน) ต้องแสดงชื่อวันภาษาไทย ประเภทวัน (วันทำงาน/วันหยุด) และเงื่อนไขอัตราค่าไฟ TOU อย่างชัดเจน"""
         import sys
