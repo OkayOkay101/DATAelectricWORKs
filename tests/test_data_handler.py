@@ -2082,6 +2082,79 @@ class TestDataHandler(unittest.TestCase):
         pd.testing.assert_frame_equal(actual, expected)
 
 
+    def test_to_numeric_fast_equals_to_numeric_coerce(self):
+        # _to_numeric_fast must match pd.to_numeric(errors='coerce') exactly
+        # on clean, mixed/invalid, empty, and already-numeric data (same values + NaN).
+        from data_handler import _to_numeric_fast
+        cases = [
+            pd.Series(["100.5", "220.0", "-3.14", "1e2", "0"]),
+            pd.Series(["100.5", "abc", "1,200.5", "", None, "NaN", "  42  "]),
+            pd.Series(["not_a_number", "", None]),
+            pd.Series([1.5, 2.0, -3]),
+        ]
+        for s in cases:
+            expected = pd.to_numeric(s, errors='coerce')
+            actual = _to_numeric_fast(s)
+            pd.testing.assert_series_equal(actual, expected)
+
+    def test_preprocess_data_to_numeric_fast_path_parity(self):
+        # preprocess_data must produce identical output to a baseline that uses
+        # pure pd.to_numeric(errors='coerce') on clean and dirty numeric strings.
+        import data_handler
+        n = 5000
+        dates = pd.date_range("2026-01-01", periods=n, freq="15min")
+        kw = [f"{10 + i % 90:.2f}" for i in range(n)]
+        dirty_kw = kw.copy()
+        dirty_kw[100] = "abc"
+        dirty_kw[200] = "1,250.75"
+        dirty_kw[300] = ""
+        dirty_kw[400] = None
+
+        def baseline(df_in):
+            df = df_in.copy()
+            if 'kW_Import' not in df.columns:
+                df['kW_Import'] = 0.0
+            if 'Voltage' not in df.columns:
+                df['Voltage'] = 220.0
+            num_kw = pd.to_numeric(df['kW_Import'], errors='coerce')
+            mask_kw = num_kw.isna()
+            if mask_kw.any():
+                clean_str_kw = df.loc[mask_kw, 'kW_Import'].astype(str).str.replace(r'[^\d.-]', '', regex=True)
+                num_kw.loc[mask_kw] = pd.to_numeric(clean_str_kw, errors='coerce')
+            df['kW_Import'] = num_kw.fillna(0)
+            num_v = pd.to_numeric(df['Voltage'], errors='coerce')
+            mask_v = num_v.isna()
+            if mask_v.any():
+                clean_str_v = df.loc[mask_v, 'Voltage'].astype(str).str.replace(r'[^\d.-]', '', regex=True)
+                num_v.loc[mask_v] = pd.to_numeric(clean_str_v, errors='coerce')
+            df['Voltage'] = num_v.fillna(220.0)
+            df['Clock'] = data_handler.fast_parse_datetime(df['Clock'], dayfirst=True)
+            df = df.dropna(subset=['Clock']).reset_index(drop=True)
+            if df.empty:
+                return data_handler._empty_preprocessed_df(df)
+            df = df.sort_values(['Clock', 'kW_Import'], ascending=[True, False])
+            df = df.drop_duplicates(subset=['Clock'], keep='first').reset_index(drop=True)
+            df['Date'] = df['Clock'].dt.normalize()
+            c_dt = df['Clock'].dt
+            ym = c_dt.year * 100 + c_dt.month
+            ym_dict = {v: f'{v // 100:04d}-{v % 100:02d}' for v in ym.unique()}
+            df['Month'] = ym.map(ym_dict)
+            hm = c_dt.hour * 60 + c_dt.minute
+            hm_dict = {v: f'{v // 60:02d}:{v % 60:02d}' for v in hm.unique()}
+            df['Time_Str'] = hm.map(hm_dict)
+            df['kWh_15min'] = df['kW_Import'] / 4.0
+            return df
+
+        for label, kw_col in [("clean", kw), ("dirty", dirty_kw)]:
+            df_in = pd.DataFrame({
+                'Clock': [d.strftime("%d/%m/%Y %H:%M") for d in dates],
+                'kW_Import': kw_col,
+                'Voltage': ["220.0"] * n,
+            })
+            with self.subTest(case=label):
+                pd.testing.assert_frame_equal(preprocess_data(df_in), baseline(df_in))
+
+
 class TestSafeErrorReason(unittest.TestCase):
     """UI ต้องแสดงเฉพาะข้อความที่เราควบคุมเอง ไม่ใช่ str(e) ดิบของ exception ภายนอก"""
 

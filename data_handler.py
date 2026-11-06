@@ -1078,6 +1078,20 @@ def _empty_preprocessed_df(template_df=None):
     return df_out.iloc[:0]
 
 
+def _to_numeric_fast(series: pd.Series) -> pd.Series:
+    """
+    แปลงคอลัมน์สตริงเป็นตัวเลขแบบเร็ว: ใช้ astype(float) เมื่อข้อมูลสะอาดทั้งคอลัมน์
+    (กรณีทั่วไปของไฟล์ Load Profile) แล้วจึง fallback ไปยัง pd.to_numeric(errors='coerce')
+    เฉพาะเมื่อแปลงไม่สำเร็จ หรือคอลัมน์ที่ไม่ใช่สตริง เพื่อรักษาค่า NaN และ dtype ให้เหมือนเดิมทุกประการ
+    """
+    if series.dtype == object or pd.api.types.is_string_dtype(series):
+        try:
+            return series.astype(float)
+        except (ValueError, TypeError):
+            pass
+    return pd.to_numeric(series, errors='coerce')
+
+
 @st.cache_data
 def preprocess_data(df, kw_max=DEFAULT_OUTLIER_KW_MAX, v_max=DEFAULT_OUTLIER_V_MAX):
     if df is None or df.empty:
@@ -1096,14 +1110,14 @@ def preprocess_data(df, kw_max=DEFAULT_OUTLIER_KW_MAX, v_max=DEFAULT_OUTLIER_V_M
     
     # ล้างข้อมูลให้เหลือเฉพาะตัวเลข
     # ⚡ Bolt Optimization: Attempt to_numeric first, and only use regex cleanup for failed values
-    num_kw = pd.to_numeric(df['kW_Import'], errors='coerce')
+    num_kw = _to_numeric_fast(df['kW_Import'])
     mask_kw = num_kw.isna()
     if mask_kw.any():
         clean_str_kw = df.loc[mask_kw, 'kW_Import'].astype(str).str.replace(r'[^\d.-]', '', regex=True)
         num_kw.loc[mask_kw] = pd.to_numeric(clean_str_kw, errors='coerce')
     df['kW_Import'] = num_kw.fillna(0)
     
-    num_v = pd.to_numeric(df['Voltage'], errors='coerce')
+    num_v = _to_numeric_fast(df['Voltage'])
     mask_v = num_v.isna()
     if mask_v.any():
         clean_str_v = df.loc[mask_v, 'Voltage'].astype(str).str.replace(r'[^\d.-]', '', regex=True)
