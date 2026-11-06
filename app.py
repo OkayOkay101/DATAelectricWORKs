@@ -297,6 +297,14 @@ with tab1:
             help="กำลังไฟฟ้าเฉลี่ยตลอดช่วงเวลาที่เลือก"
         )
 
+        if rate_type == "TOU (Time of Use)" and not df_display.empty and total_kwh_display > 0:
+            onpeak_kwh = df_display[df_display['Period_Detail'] == 'On-Peak']['kWh_15min'].sum()
+            onpeak_pct = (onpeak_kwh / total_kwh_display * 100)
+            st.info(
+                f"⚡ **พลังงานช่วง On-Peak:** {onpeak_kwh:,.2f} kWh ({onpeak_pct:.1f}% ของพลังงานรวม) "
+                f"• ช่วงเวลา {p_start:%H:%M}–{p_end:%H:%M} (เรท {p_rate:.4f} บาท/หน่วย)"
+            )
+
     st.subheader("📈 กราฟความต้องการพลังงานไฟฟ้ารวมและจุดผิดปกติ (kW)")
     fig_all = go.Figure()
     # ⚡ Bolt Optimization: Use map instead of apply for simple dictionary lookup
