@@ -991,3 +991,45 @@ class TestApp(unittest.TestCase):
         finally:
             if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
                 sys.modules['streamlit'] = mock_st
+
+
+    def test_tab1_overview_surfaces_anomaly_alert(self):
+        """แท็บ 1 (ภาพรวม) ต้องแจ้งเตือนจำนวนจุดผิดปกติ แยกสี/ประเภท (🔴 ไฟกระชาก / 🔵 ไฟตก) ให้เห็นตั้งแต่ภาพรวม"""
+        import sys
+        mock_st = None
+        if 'streamlit' in sys.modules and not hasattr(sys.modules['streamlit'], '__path__'):
+            mock_st = sys.modules.pop('streamlit')
+
+        try:
+            from streamlit.testing.v1 import AppTest
+            import os
+            import io
+
+            app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.py')
+            at = AppTest.from_file(app_path, default_timeout=30).run()
+
+            # 20 normal intervals of 50 kW and one 500 kW spike -> guaranteed High anomaly
+            clocks = pd.date_range('2026-01-01 08:00:00', periods=20, freq='15min')
+            df = pd.DataFrame({
+                'Clock': clocks.strftime('%Y-%m-%d %H:%M:%S'),
+                'kW_Import': [50.0] * 19 + [500.0],
+                'Voltage': [220.0] * 20,
+            })
+            buffer = io.BytesIO()
+            df.to_csv(buffer, index=False)
+            at.file_uploader[0].set_value([('anomaly_overview.csv', buffer.getvalue(), 'text/csv')]).run()
+            self.assertFalse(at.exception, f'App execution failed: {at.exception}')
+
+            anomaly_alerts = [
+                w.value for w in at.warning
+                if 'ตรวจพบจุดผิดปกติ' in w.value and 'ความไว' in w.value
+            ]
+            self.assertEqual(len(anomaly_alerts), 1, 'Expected anomaly alert in Tab 1 Overview')
+            self.assertIn('จุด', anomaly_alerts[0])
+            self.assertIn('รายการ', anomaly_alerts[0])
+            # palette: ต้องแยกสี/ประเภทให้ตรงกับ legend ของกราฟ
+            self.assertIn('🔴 ไฟกระชาก', anomaly_alerts[0])
+            self.assertIn('🔵 ไฟตก', anomaly_alerts[0])
+        finally:
+            if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
+                sys.modules['streamlit'] = mock_st

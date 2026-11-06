@@ -305,6 +305,22 @@ with tab1:
                 f"• ช่วงเวลา {p_start:%H:%M}–{p_end:%H:%M} (เรท {p_rate:.4f} บาท/หน่วย)"
             )
 
+        if not df_display.empty:
+            high_count = int((df_display['Anomaly_Type'] == 'สูงกว่าเกณฑ์ (High)').sum())
+            low_count = int((df_display['Anomaly_Type'] == 'ไฟตก (Low)').sum())
+            anomaly_count = high_count + low_count
+            if anomaly_count > 0:
+                st.warning(
+                    f"⚠️ **ตรวจพบจุดผิดปกติ {anomaly_count:,} จุด** จากทั้งหมด {len(df_display):,} รายการ "
+                    f"• 🔴 ไฟกระชาก {high_count:,} จุด • 🔵 ไฟตก {low_count:,} จุด "
+                    f"(ความไว {sensitivity:g}) — ดูรายละเอียดรายวันได้ที่แท็บ 2 และ 4"
+                )
+            else:
+                st.success(
+                    f"✅ **ไม่พบจุดผิดปกติ (ไฟกระชาก/ไฟตก)** ในช่วงเวลาที่เลือก "
+                    f"• ตรวจสอบทั้งหมด {len(df_display):,} รายการ (ความไว {sensitivity:g})"
+                )
+
     st.subheader("📈 กราฟความต้องการพลังงานไฟฟ้ารวมและจุดผิดปกติ (kW)")
     fig_all = go.Figure()
     # ⚡ Bolt Optimization: Use map instead of apply for simple dictionary lookup
