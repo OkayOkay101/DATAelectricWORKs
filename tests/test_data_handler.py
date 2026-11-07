@@ -855,6 +855,37 @@ class TestDataHandler(unittest.TestCase):
         self.assertLessEqual(len(unique_calls), 2, f"unique() was called {len(unique_calls)} times; should be <= 2")
         self.assertLessEqual(len(map_calls), 2, f"map() was called {len(map_calls)} times; should be <= 2")
 
+    def test_parse_excel_df_skips_validation_map_when_all_values_valid(self):
+        # ⚡ Bolt: when every unique Date/Time value is valid (the common case for clean load
+        # profiles), parse_excel_df must skip the full-series dict .map() validation lookups.
+        df_raw = pd.DataFrame([
+            ["Date", "Time", "kW", "Voltage"],
+            ["01/01/2026", "00:15", "100.0", "220"],
+            ["02/01/2026", "00:30", "110.0", "221"],
+            ["03/01/2026", "00:45", "120.0", "222"],
+        ])
+        expected = pd.DataFrame({
+            "Clock": ["01/01/2026 00:15", "02/01/2026 00:30", "03/01/2026 00:45"],
+            "kW_Import": ["100.0", "110.0", "120.0"],
+            "Voltage": ["220", "221", "222"],
+        })
+
+        map_calls = []
+        original_map = pd.Series.map
+
+        def tracking_map(series, *args, **kwargs):
+            map_calls.append(series.name)
+            return original_map(series, *args, **kwargs)
+
+        with patch.object(pd.Series, "map", tracking_map):
+            actual = parse_excel_df(df_raw)
+
+        pd.testing.assert_frame_equal(actual, expected)
+        self.assertEqual(
+            map_calls, [],
+            f"validation .map() must be skipped for all-valid columns, got {map_calls}",
+        )
+
     def test_parse_excel_df_none_or_empty_returns_none(self):
         self.assertIsNone(parse_excel_df(None))
         self.assertIsNone(parse_excel_df(pd.DataFrame()))
