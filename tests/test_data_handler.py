@@ -671,6 +671,22 @@ class TestDataHandler(unittest.TestCase):
         self.assertEqual(df.iloc[0]['kW_Import'], "100.5")
         self.assertEqual(df.iloc[0]['Voltage'], "220")
 
+    def test_parse_text_lines_date_column_as_main_time(self):
+        # ไฟล์ที่มีคอลัมน์ Date เพียงคอลัมน์เดียวเป็นแหล่งเวลา (ไม่มีคอลัมน์ Clock แยก)
+        lines = [
+            "Date,kW_Import",
+            "01/01/2026 00:00,100.5",
+            "01/01/2026 00:15,110.2",
+        ]
+        df = parse_text_lines(lines, delimiter=',')
+        self.assertIsNotNone(df)
+        self.assertFalse(df.empty)
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df.iloc[0]['Clock'], "01/01/2026 00:00")
+        self.assertEqual(df.iloc[1]['Clock'], "01/01/2026 00:15")
+        self.assertEqual(df.iloc[0]['kW_Import'], "100.5")
+        self.assertEqual(df.iloc[1]['kW_Import'], "110.2")
+
     def test_parse_excel_df_date_and_time_columns(self):
         # Excel DataFrame with separate Date and Time columns
         df_raw = pd.DataFrame([
