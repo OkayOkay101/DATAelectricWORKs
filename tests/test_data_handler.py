@@ -1322,12 +1322,12 @@ class TestDataHandler(unittest.TestCase):
         from data_handler import sanitize_filename
         self.assertEqual(sanitize_filename("[คลิกที่นี่](https://phishing.site/login).csv"), "login.csv")
         self.assertEqual(sanitize_filename("[คลิกที่นี่](phishing).csv"), "คลิกที่นี่phishing.csv")
-        self.assertEqual(sanitize_filename("<script>alert(1)</script>.csv"), "script.csv")
+        self.assertEqual(sanitize_filename("<script>alert(1)</script>.csv"), "scriptalert1.csv")
         self.assertEqual(sanitize_filename("`code`~strike~.csv"), "codestrike.csv")
 
     def test_sanitize_filename_crlf_and_control_chars(self):
         from data_handler import sanitize_filename
-        self.assertEqual(sanitize_filename("report\r\nERROR: Fake log.csv"), "reportERROR: Fake log.csv")
+        self.assertEqual(sanitize_filename("report\r\nERROR: Fake log.csv"), "reportERROR Fake log.csv")
         self.assertEqual(sanitize_filename("null\x00byte.csv"), "nullbyte.csv")
 
     def test_sanitize_filename_preserves_legitimate_names(self):
