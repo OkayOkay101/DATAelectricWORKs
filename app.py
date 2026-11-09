@@ -309,26 +309,94 @@ with tab1:
         if rate_type == "TOU (Time of Use)" and not df_display.empty and total_kwh_display > 0:
             onpeak_kwh = df_display[df_display['Period_Detail'] == 'On-Peak']['kWh_15min'].sum()
             onpeak_pct = (onpeak_kwh / total_kwh_display * 100)
-            st.info(
-                f"⚡ **พลังงานช่วง On-Peak:** {onpeak_kwh:,.2f} kWh ({onpeak_pct:.1f}% ของพลังงานรวม) "
-                f"• ช่วงเวลา {p_start:%H:%M}–{p_end:%H:%M} (เรท {p_rate:.4f} บาท/หน่วย)"
-            )
+            offpeak_kwh = df_display[df_display['Period_Detail'] == 'Off-Peak']['kWh_15min'].sum()
+            holiday_kwh = df_display[df_display['Period_Detail'] == 'Holiday']['kWh_15min'].sum()
+            onpeak_cost = df_display[df_display['Period_Detail'] == 'On-Peak']['Cost_THB'].sum()
+            offpeak_cost = df_display[df_display['Period_Detail'] == 'Off-Peak']['Cost_THB'].sum()
+            holiday_cost = df_display[df_display['Period_Detail'] == 'Holiday']['Cost_THB'].sum()
+            total_cost = onpeak_cost + offpeak_cost + holiday_cost
+            onpeak_cost_pct = (onpeak_cost / total_cost * 100) if total_cost > 0 else 0.0
+            rate_diff = p_rate - op_rate
+            extra_cost = onpeak_kwh * rate_diff
+
+            with st.container(border=True):
+                st.markdown("#### ⚡ สรุปสัดส่วนพลังงาน On-Peak (โอกาสประหยัดค่าไฟ)")
+                col_p1, col_p2 = st.columns([2, 1])
+                with col_p1:
+                    st.progress(onpeak_pct / 100, text=f"On-Peak: {onpeak_pct:.1f}% ของพลังงานรวม ({onpeak_kwh:,.2f} kWh)")
+                    st.caption(f"ช่วงเวลา On-Peak: {p_start:%H:%M}–{p_end:%H:%M}  •  เรท On-Peak: {p_rate:.4f} บาท/หน่วย  •  เรท Off-Peak/Holiday: {op_rate:.4f} บาท/หน่วย")
+                with col_p2:
+                    st.metric(
+                        "💰 ต้นทุนเพิ่มจาก On-Peak",
+                        f"฿ {extra_cost:,.2f}",
+                        help=f"ค่าใช้จ่ายเพิ่มเติมจากอัตรา On-Peak สูงกว่า Off-Peak {rate_diff:.4f} บาท/หน่วย × {onpeak_kwh:,.2f} kWh"
+                    )
+                st.markdown(
+                    f"📊 **การกระจายพลังงาน:** On-Peak {onpeak_kwh:,.2f} kWh ({onpeak_pct:.1f}%)  •  "
+                    f"Off-Peak {offpeak_kwh:,.2f} kWh ({(offpeak_kwh/total_kwh_display*100):.1f}%)  •  "
+                    f"Holiday {holiday_kwh:,.2f} kWh ({(holiday_kwh/total_kwh_display*100):.1f}%)\n\n"
+                    f"💡 **โอกาสประหยัด:** หากเลื่อนโหลดออกจากช่วง On-Peak ได้ {onpeak_kwh:,.2f} kWh "
+                    f"จะประหยัดค่าไฟได้ประมาณ **฿ {extra_cost:,.2f}** (ลดลง {onpeak_cost_pct:.1f}% ของค่าไฟรวม)\n\n"
+                    f"👉 **แนวทาง:** ใช้แท็บ **🔄 3. กราฟจำลองเวลา (Shift Graph)** เพื่อทดลองเลื่อนเวลาการทำงานและคำนวณการประหยัดที่แท้จริง"
+                )
 
         if not df_display.empty:
             high_count = int((df_display['Anomaly_Type'] == 'สูงกว่าเกณฑ์ (High)').sum())
             low_count = int((df_display['Anomaly_Type'] == 'ไฟตก (Low)').sum())
             anomaly_count = high_count + low_count
-            if anomaly_count > 0:
-                st.warning(
-                    f"⚠️ **ตรวจพบจุดผิดปกติ {anomaly_count:,} จุด** จากทั้งหมด {len(df_display):,} รายการ "
-                    f"• 🔴 ไฟกระชาก {high_count:,} จุด • 🔵 ไฟตก {low_count:,} จุด "
-                    f"(ความไว {sensitivity:g}) — ดูรายละเอียดรายวันได้ที่แท็บ 2 และ 4"
-                )
-            else:
-                st.success(
-                    f"✅ **ไม่พบจุดผิดปกติ (ไฟกระชาก/ไฟตก)** ในช่วงเวลาที่เลือก "
-                    f"• ตรวจสอบทั้งหมด {len(df_display):,} รายการ (ความไว {sensitivity:g})"
-                )
+            total_count = len(df_display)
+            anomaly_pct = (anomaly_count / total_count * 100) if total_count > 0 else 0.0
+
+            with st.container(border=True):
+                if anomaly_count > 0:
+                    st.warning(
+                        f"⚠️ **ตรวจพบจุดผิดปกติ {anomaly_count:,} จุด ({anomaly_pct:.1f}%)** จากทั้งหมด {total_count:,} รายการ "
+                        f"• 🔴 ไฟกระชาก {high_count:,} จุด • 🔵 ไฟตก {low_count:,} จุด "
+                        f"(ความไว {sensitivity:g})"
+                    )
+                    st.markdown(
+                        f"💡 **แนวทางแก้ไข:**\n"
+                        f"• 🔴 **ไฟกระชาก (High):** โหลดสูงกว่าเกณฑ์ — ควรตรวจสอบอุปกรณ์หรือกระบวนการผลิต\n"
+                        f"• 🔵 **ไฟตก (Low):** โหลดต่ำผิดปกติ — อาจเป็นสัญญาณไฟฟ้าขาดหรือเซนเซอร์ผิดปกติ\n\n"
+                        f"👉 ดูรายละเอียดรายวันได้ที่แท็บ 2 (เจาะลึกรายวัน) และแท็บ 4 (วิเคราะห์ค่าไฟ)"
+                    )
+
+                    # --- Key Anomaly Details: Show top extreme anomalies for immediate action ---
+                    all_anomalies = df_display[df_display['Anomaly_Type'] != 'ปกติ'].copy()
+                    if not all_anomalies.empty:
+                        high_anomalies = all_anomalies[all_anomalies['Anomaly_Type'] == 'สูงกว่าเกณฑ์ (High)'].nlargest(5, 'kW_Import')
+                        low_anomalies = all_anomalies[all_anomalies['Anomaly_Type'] == 'ไฟตก (Low)'].nsmallest(5, 'kW_Import')
+                        key_anomalies = pd.concat([high_anomalies, low_anomalies]).sort_values('Clock')
+
+                        if not key_anomalies.empty:
+                            with st.expander("🔍 รายละเอียดจุดผิดปกติที่สำคัญ (Top 5 แต่ละประเภท)", expanded=False):
+                                anomaly_table = key_anomalies[['Clock', 'kW_Import', 'Voltage', 'Period_Detail', 'Anomaly_Type']].copy()
+                                anomaly_table.columns = ['วัน-เวลา', 'กำลังไฟฟ้า (kW)', 'แรงดัน (V)', 'ช่วงเวลา', 'ประเภทความผิดปกติ']
+                                st.dataframe(
+                                    anomaly_table,
+                                    width='stretch',
+                                    hide_index=True,
+                                    column_config={
+                                        "วัน-เวลา": st.column_config.DatetimeColumn("วัน-เวลา", format="YYYY-MM-DD HH:mm"),
+                                        "กำลังไฟฟ้า (kW)": st.column_config.NumberColumn("กำลังไฟฟ้า (kW)", format="%.2f"),
+                                        "แรงดัน (V)": st.column_config.NumberColumn("แรงดัน (V)", format="%.1f"),
+                                        "ช่วงเวลา": st.column_config.TextColumn("ช่วงเวลา"),
+                                        "ประเภทความผิดปกติ": st.column_config.TextColumn("ประเภทความผิดปกติ"),
+                                    }
+                                )
+                                anomaly_csv = convert_df_to_csv(anomaly_table)
+                                st.download_button(
+                                    label="📥 ดาวน์โหลดรายการจุดผิดปกติ (.csv)",
+                                    data=anomaly_csv,
+                                    file_name="anomaly_events_summary.csv",
+                                    mime="text/csv",
+                                    help="ดาวน์โหลดรายการจุดผิดปกติที่สำคัญพร้อมเวลาและค่าที่วัดได้"
+                                )
+                else:
+                    st.success(
+                        f"✅ **ไม่พบจุดผิดปกติ (ไฟกระชาก/ไฟตก)** ในช่วงเวลาที่เลือก "
+                        f"• ตรวจสอบทั้งหมด {total_count:,} รายการ (ความไว {sensitivity:g})"
+                    )
 
     st.subheader("📈 กราฟความต้องการพลังงานไฟฟ้ารวมและจุดผิดปกติ (kW)")
     fig_all = go.Figure()
