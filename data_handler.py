@@ -389,7 +389,9 @@ def parse_text_lines(lines, delimiter=','):
     if time_idx == -1 or kw_idx == -1 or time_idx == kw_idx:
         return None
 
-    if date_idx != -1 and (date_idx == time_idx or date_idx == kw_idx):
+    # อนุญาตให้คอลัมน์ Date (วันที่) เป็นเวลาหลักเมื่อไม่มีคอลัมน์ Clock แยกต่างหาก
+    # แต่ต้องไม่ใช่คอลัมน์เดียวกับคอลัมน์กำลังไฟฟ้า (kW)
+    if date_idx != -1 and date_idx == kw_idx:
         return None
         
     # 3. สกัดข้อมูลทีละบรรทัด
