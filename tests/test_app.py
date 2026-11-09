@@ -580,10 +580,21 @@ class TestApp(unittest.TestCase):
             at.file_uploader[0].set_value([('onpeak_share.csv', buffer.getvalue(), 'text/csv')]).run()
             self.assertFalse(at.exception, f"App execution failed: {at.exception}")
 
-            onpeak_infos = [inf.value for inf in at.info if 'พลังงานช่วง On-Peak' in inf.value]
-            self.assertEqual(len(onpeak_infos), 1, "Expected On-Peak energy share glance in Tab 1 Overview")
-            self.assertIn('25.00 kWh', onpeak_infos[0], "On-Peak energy must be shown in kWh")
-            self.assertIn('100.0%', onpeak_infos[0], "On-Peak share percentage must be shown")
+            # Check for progress bar with On-Peak percentage
+            progress_bars = [p for p in at.progress if 'On-Peak' in p.proto.text]
+            self.assertGreaterEqual(len(progress_bars), 1, "Expected progress bar showing On-Peak share")
+            self.assertIn('100.0%', progress_bars[0].proto.text, "Progress bar must show On-Peak percentage")
+
+            # Check for extra cost metric
+            extra_cost_metrics = [m for m in at.metric if 'ต้นทุนเพิ่มจาก On-Peak' in m.label]
+            self.assertEqual(len(extra_cost_metrics), 1, "Expected extra cost metric for On-Peak")
+            self.assertIn('79.03', extra_cost_metrics[0].value, "Extra cost must be calculated correctly (25 kWh × (5.7982-2.6369) = 79.03)")
+
+            # Check for savings opportunity markdown with call-to-action
+            markdowns = [m.value for m in at.markdown if 'โอกาสประหยัด' in m.value and 'กราฟจำลองเวลา' in m.value]
+            self.assertGreaterEqual(len(markdowns), 1, "Expected savings opportunity guidance with Tab 3 reference")
+            self.assertIn('กราฟจำลองเวลา (Shift Graph)', markdowns[0], "Must reference Tab 3 for simulation")
+            self.assertIn('แท็บ', markdowns[0], "Must reference Tab explicitly")
         finally:
             if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
                 sys.modules['streamlit'] = mock_st
@@ -1074,6 +1085,125 @@ class TestApp(unittest.TestCase):
             # palette: ต้องแยกสี/ประเภทให้ตรงกับ legend ของกราฟ
             self.assertIn('🔴 ไฟกระชาก', anomaly_alerts[0])
             self.assertIn('🔵 ไฟตก', anomaly_alerts[0])
+        finally:
+            if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
+                sys.modules['streamlit'] = mock_st
+
+    def test_tab1_overview_anomaly_alert_has_actionable_guidance(self):
+        """แท็บ 1 (ภาพรวม) กล่องแจ้งเตือนจุดผิดปกติ ต้องแสดงร้อยละ และแนวทางแก้ไขที่เป็นประโยชน์"""
+        import sys
+        mock_st = None
+        if 'streamlit' in sys.modules and not hasattr(sys.modules['streamlit'], '__path__'):
+            mock_st = sys.modules.pop('streamlit')
+
+        try:
+            from streamlit.testing.v1 import AppTest
+            import os
+            import io
+
+            app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.py')
+            at = AppTest.from_file(app_path, default_timeout=30).run()
+
+            # 20 normal intervals of 50 kW and one 500 kW spike -> guaranteed High anomaly
+            clocks = pd.date_range('2026-01-01 08:00:00', periods=20, freq='15min')
+            df = pd.DataFrame({
+                'Clock': clocks.strftime('%Y-%m-%d %H:%M:%S'),
+                'kW_Import': [50.0] * 19 + [500.0],
+                'Voltage': [220.0] * 20,
+            })
+            buffer = io.BytesIO()
+            df.to_csv(buffer, index=False)
+            at.file_uploader[0].set_value([('anomaly_guidance.csv', buffer.getvalue(), 'text/csv')]).run()
+            self.assertFalse(at.exception, f'App execution failed: {at.exception}')
+
+            # Check warning contains percentage
+            anomaly_warnings = [
+                w.value for w in at.warning
+                if 'ตรวจพบจุดผิดปกติ' in w.value and 'ความไว' in w.value
+            ]
+            self.assertEqual(len(anomaly_warnings), 1, 'Expected anomaly alert in Tab 1 Overview')
+            self.assertIn('%', anomaly_warnings[0], 'Anomaly percentage should be shown')
+
+            # Check markdown contains actionable guidance for both anomaly types
+            guidance_marks = [
+                m.value for m in at.markdown
+                if 'แนวทางแก้ไข' in m.value or 'ควรตรวจสอบ' in m.value or 'อาจเป็นสัญญาณ' in m.value
+            ]
+            self.assertTrue(len(guidance_marks) >= 1, 'Expected actionable guidance markdown for anomalies')
+            guidance_text = guidance_marks[0]
+            self.assertIn('ไฟกระชาก', guidance_text, 'Guidance should mention High anomaly')
+            self.assertIn('ไฟตก', guidance_text, 'Guidance should mention Low anomaly')
+            self.assertIn('แท็บ 2', guidance_text, 'Guidance should reference Tab 2')
+            self.assertIn('แท็บ 4', guidance_text, 'Guidance should reference Tab 4')
+        finally:
+            if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
+                sys.modules['streamlit'] = mock_st
+
+    def test_tab1_overview_anomaly_details_expander_shows_top_events(self):
+        """แท็บ 1 (ภาพรวม) ต้องมีกล่องขยาย (expander) แสดงรายละเอียดจุดผิดปกติที่สำคัญ พร้อมตารางและปุ่มดาวน์โหลด"""
+        import sys
+        mock_st = None
+        if 'streamlit' in sys.modules and not hasattr(sys.modules['streamlit'], '__path__'):
+            mock_st = sys.modules.pop('streamlit')
+
+        try:
+            from streamlit.testing.v1 import AppTest
+            import os
+            import io
+
+            app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.py')
+            at = AppTest.from_file(app_path, default_timeout=30).run()
+
+            # Create data with multiple High and Low anomalies
+            # 50 normal (50 kW), 3 High spikes (500, 450, 400 kW), 2 Low drops (0.0 kW)
+            # With many normal values, mean ≈ 50, std ≈ small, so extreme outliers are clearly detected
+            clocks = pd.date_range('2026-01-01 08:00:00', periods=55, freq='15min')
+            df = pd.DataFrame({
+                'Clock': clocks.strftime('%Y-%m-%d %H:%M:%S'),
+                'kW_Import': [50.0] * 50 + [500.0, 450.0, 400.0, 0.0, 0.0],
+                'Voltage': [220.0] * 55,
+            })
+            buffer = io.BytesIO()
+            df.to_csv(buffer, index=False)
+            at.file_uploader[0].set_value([('anomaly_details.csv', buffer.getvalue(), 'text/csv')]).run()
+            self.assertFalse(at.exception, f'App execution failed: {at.exception}')
+
+            # Check for expander with anomaly details
+            expanders = [e for e in at.expander if 'รายละเอียดจุดผิดปกติที่สำคัญ' in e.label]
+            self.assertEqual(len(expanders), 1, 'Expected anomaly details expander in Tab 1')
+
+            # In test mode, expander is already expanded; access children directly
+            anomaly_expander = expanders[0]
+            children_vals = list(anomaly_expander.children.values())
+            has_dataframe = any(type(c).__name__ == 'Dataframe' for c in children_vals)
+            has_dl = any(type(c).__name__ == 'DownloadButton' for c in children_vals)
+            self.assertTrue(has_dataframe, 'Expected dataframe in expander children')
+            self.assertTrue(has_dl, 'Expected download button in expander children')
+
+            # Check table exists with correct columns
+            anomaly_tables = [dt for dt in children_vals if type(dt).__name__ == 'Dataframe' and hasattr(dt, 'value') and 'ประเภทความผิดปกติ' in dt.value.columns]
+            self.assertGreaterEqual(len(anomaly_tables), 1, 'Expected anomaly details table with correct columns')
+            anomaly_table = anomaly_tables[0].value
+            expected_columns = ['วัน-เวลา', 'กำลังไฟฟ้า (kW)', 'แรงดัน (V)', 'ช่วงเวลา', 'ประเภทความผิดปกติ']
+            self.assertEqual(anomaly_table.columns.tolist(), expected_columns)
+
+            # Should show top 5 High + top 5 Low = up to 10 rows (we have 3 High + 2 Low = 5 rows)
+            self.assertEqual(len(anomaly_table), 5, 'Expected 5 anomaly rows (3 High + 2 Low)')
+
+            # Check High anomalies are sorted by kW descending (500, 450, 400)
+            high_rows = anomaly_table[anomaly_table['ประเภทความผิดปกติ'] == 'สูงกว่าเกณฑ์ (High)']
+            self.assertEqual(len(high_rows), 3)
+            self.assertEqual(high_rows['กำลังไฟฟ้า (kW)'].tolist(), [500.0, 450.0, 400.0])
+
+            # Check Low anomalies are sorted by kW ascending (0.0, 0.0)
+            low_rows = anomaly_table[anomaly_table['ประเภทความผิดปกติ'] == 'ไฟตก (Low)']
+            self.assertEqual(len(low_rows), 2)
+            self.assertEqual(low_rows['กำลังไฟฟ้า (kW)'].tolist(), [0.0, 0.0])
+
+            # Check download button for anomaly details
+            anomaly_dl_buttons = [db for db in children_vals if hasattr(db, 'label') and 'ดาวน์โหลดรายการจุดผิดปกติ' in db.label]
+            self.assertEqual(len(anomaly_dl_buttons), 1, 'Expected anomaly details download button')
+            self.assertTrue(anomaly_dl_buttons[0].help and 'ดาวน์โหลด' in anomaly_dl_buttons[0].help)
         finally:
             if mock_st is not None and not hasattr(sys.modules.get('streamlit'), '__path__'):
                 sys.modules['streamlit'] = mock_st
