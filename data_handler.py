@@ -255,8 +255,14 @@ def sanitize_filename(filename: str) -> str:
     if not filename or not isinstance(filename, str):
         return "unnamed_file"
 
+    clean_name = str(filename)
+
+    # 0. กำจัด HTML closing tags (</...>) ก่อน เพื่อป้องกันการสร้าง path separator หลอกลวง
+    # รูปแบบ </tag> หรือ </tag attr> -> ลบทั้งหมด
+    clean_name = re.sub(r'</[^>]*>', '', clean_name)
+
     # 1. ตัด directory path เพื่อป้องกัน Path Traversal (รองรับทั้ง Unix '/' และ Windows '\\')
-    clean_name = re.split(r'[/\\]', filename)[-1].strip()
+    clean_name = re.split(r'[/\\]', clean_name)[-1].strip()
 
     # 2. ป้องกันลำดับ path traversal ตกค้าง (เช่น ..)
     clean_name = re.sub(r'^\.+', '', clean_name).strip()
@@ -266,8 +272,18 @@ def sanitize_filename(filename: str) -> str:
     # 3. กำจัด newline และ control characters เพื่อป้องกัน Log Injection (CWE-117)
     clean_name = re.sub(r'[\r\n\t\x00-\x1f\x7f-\x9f]', '', clean_name)
 
-    # 4. ป้องกัน Markdown/HTML Injection บน UI (เช่น [phish](url) หรือรูปภาพใน st.toast)
-    clean_name = re.sub(r'[\[\]\(\)`~<>]', '', clean_name).strip()
+    # 4. ป้องกัน Markdown/HTML Injection และ Windows forbidden chars บน UI
+    # Windows forbidden: < > : " / \ | ? *
+    # Markdown/HTML: [ ] ( ) ` ~ < >
+    clean_name = re.sub(r'[\[\]\(\)`~<>:"|?*\\/]', '', clean_name)
+
+    # 5. ทำ path split อีกครั้งเพื่อจัดการ path separator ที่อาจเกิดจากการลบอักขระ
+    clean_name = re.split(r'[/\\]', clean_name)[-1].strip()
+
+    # 6. ป้องกันลำดับ path traversal ตกค้างอีกครั้ง
+    clean_name = re.sub(r'^\.+', '', clean_name).strip()
+    if not clean_name:
+        return "unnamed_file"
 
     return clean_name or "unnamed_file"
 
