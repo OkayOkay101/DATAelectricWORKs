@@ -861,7 +861,7 @@ def load_file(uploaded_file, file_ext):
                 if dfs:
                     df_result = parse_excel_df(dfs[0])
             except Exception as e:
-                logging.warning(f"Failed to read html: {e}")
+                logging.warning(f"Failed to read html ({type(e).__name__}): {safe_error_reason(e)}")
 
     # 2. หากเป็นไฟล์ CSV หรือ TXT
     if df_result is None and clean_ext in ['csv', 'txt']:

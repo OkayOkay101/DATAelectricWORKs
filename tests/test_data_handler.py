@@ -264,6 +264,23 @@ class TestDataHandler(unittest.TestCase):
         self.assertIn(GENERIC_LOAD_ERROR_REASON, log_output)
         self.assertNotIn(leaked_data, log_output)
 
+    def test_load_file_html_failure_logs_redacted_exception(self):
+        import io
+        from data_handler import GENERIC_LOAD_ERROR_REASON, load_file
+
+        leaked_data = "C:\\uploads\\customer-payroll.xlsx: confidential row"
+        with patch('data_handler.validate_excel_archive'), \
+                patch('pandas.read_excel', side_effect=ValueError("excel parser detail")), \
+                patch('pandas.read_html', side_effect=ValueError(leaked_data)):
+            with self.assertLogs(level='WARNING') as captured:
+                with self.assertRaises(ValueError):
+                    load_file(io.BytesIO(b"uploaded file"), "xlsx")
+
+        log_output = "\n".join(captured.output)
+        self.assertIn("ValueError", log_output)
+        self.assertIn(GENERIC_LOAD_ERROR_REASON, log_output)
+        self.assertNotIn(leaked_data, log_output)
+
     def test_load_file_rejects_xlsx_decompression_bomb(self):
         import io
         import struct
