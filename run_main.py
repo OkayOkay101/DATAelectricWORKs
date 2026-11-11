@@ -6,7 +6,7 @@ def get_resource_path(relative_path):
     """ฟังก์ชันหาตำแหน่งพาธไฟล์ดิบที่แท้จริงหลังจากถูกมัดรวมด้วย PyInstaller"""
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, relative_path)
-    return os.path.join(os.path.abspath("."), relative_path)
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), relative_path)
 
 if __name__ == "__main__":
     # อ้างอิงไปยังไฟล์หน้าจอหลักหลักของคุณ (app.py)
