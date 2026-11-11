@@ -877,7 +877,7 @@ def load_file(uploaded_file, file_ext):
                     uploaded_file.seek(0)
                     df_raw = pd.read_csv(uploaded_file, encoding='utf-8-sig', names=range(50), dtype=str, low_memory=False)
             except Exception as e:
-                logging.warning(f"Failed to read CSV with utf-8-sig: {e}")
+                logging.warning(f"Failed to read CSV with utf-8-sig ({type(e).__name__}): {safe_error_reason(e)}")
                 uploaded_file.seek(0)
                 try:
                     df_raw = pd.read_csv(uploaded_file, encoding='cp874', header=None, dtype=str, low_memory=False)
@@ -886,7 +886,7 @@ def load_file(uploaded_file, file_ext):
                     df_raw = pd.read_csv(uploaded_file, encoding='cp874', names=range(50), dtype=str, low_memory=False)
             df_result = parse_excel_df(df_raw)
         except Exception as e:
-            logging.warning(f"Failed to parse CSV with pandas: {e}")
+            logging.warning(f"Failed to parse CSV with pandas ({type(e).__name__}): {safe_error_reason(e)}")
 
         # 2.2 ลองอ่านแบบ Text บรรทัดต่อบรรทัด
         if df_result is None:
@@ -907,7 +907,7 @@ def load_file(uploaded_file, file_ext):
                     else:
                         text_stream.detach()
                 except Exception as e:
-                    logging.warning(f"Failed to read text lines with encoding {enc}: {e}")
+                    logging.warning(f"Failed to read text lines with encoding {enc} ({type(e).__name__}): {safe_error_reason(e)}")
                     if 'text_stream' in locals() and not text_stream.closed:
                         try:
                             text_stream.detach()
