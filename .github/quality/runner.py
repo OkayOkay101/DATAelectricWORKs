@@ -50,6 +50,14 @@ def relative(path):
     return str(PurePosixPath(path))
 
 
+def application_module_path(root, name):
+    candidate = name.replace('.', '/') + '.py'
+    if (root / candidate).is_file():
+        return candidate
+    package = name.replace('.', '/') + '/__init__.py'
+    return package if (root / package).is_file() else None
+
+
 def inspect_tests(source):
     tree = ast.parse(source)
     if any(isinstance(n, ast.Assign) and any(isinstance(t, ast.Subscript) and
@@ -267,8 +275,8 @@ def execute(repo, request, profile, phase=None, commands=None):
                     names = [a.name for a in node.names] if isinstance(node, ast.Import) else (
                         [node.module] if isinstance(node, ast.ImportFrom) and node.module else [])
                     for name in names:
-                        candidate = name.replace('.', '/') + '.py'
-                        if (head / candidate).is_file() and not any(candidate.startswith(r + '/') for r in profile['test_roots']):
+                        candidate = application_module_path(head, name)
+                        if candidate and not any(candidate.startswith(r + '/') for r in profile['test_roots']):
                             imports.add(candidate)
             if not imports:
                 raise ValueError('Selected tests do not import an actual application module')
