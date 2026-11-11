@@ -854,7 +854,7 @@ def load_file(uploaded_file, file_ext):
             df_raw = pd.read_excel(uploaded_file, engine=engine, header=None)
             df_result = parse_excel_df(df_raw)
         except Exception as e:
-            logging.warning(f"Failed to read excel with {engine}: {e}")
+            logging.warning(f"Failed to read excel with {engine} ({type(e).__name__}): {safe_error_reason(e)}")
             try:
                 uploaded_file.seek(0)
                 dfs = pd.read_html(uploaded_file, encoding='utf-8')
