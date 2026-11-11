@@ -2,7 +2,6 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import unittest
-import sys
 from unittest.mock import MagicMock, patch
 
 class MockSt:
@@ -14,13 +13,24 @@ class MockSt:
     def warning(self, msg):
         pass
 
-sys.modules['streamlit'] = MockSt()
-
 import pandas as pd
 import numpy as np
-from data_handler import parse_text_lines, parse_excel_df, preprocess_data, get_usage_snapshots
+
+_STREAMLIT_MISSING = object()
+_original_streamlit = sys.modules.get('streamlit', _STREAMLIT_MISSING)
+try:
+    sys.modules['streamlit'] = MockSt()
+    from data_handler import parse_text_lines, parse_excel_df, preprocess_data, get_usage_snapshots
+finally:
+    if _original_streamlit is _STREAMLIT_MISSING:
+        sys.modules.pop('streamlit', None)
+    else:
+        sys.modules['streamlit'] = _original_streamlit
 
 class TestDataHandler(unittest.TestCase):
+
+    def test_streamlit_module_is_not_replaced_globally(self):
+        self.assertNotIsInstance(sys.modules.get('streamlit'), MockSt)
 
     def test_parse_text_lines_basic(self):
         lines = [
