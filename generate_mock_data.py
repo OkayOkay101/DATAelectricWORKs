@@ -24,7 +24,8 @@ def generate_mock_data():
         voltage.append(v)
 
     df = pd.DataFrame({
-        "Clock": dates.strftime("%d/%m/%Y %H:%M"),
+        # Use the unambiguous ISO 8601 form YYYY-MM-DDTHH:MM:SS.
+        "Clock": dates.strftime("%Y-%m-%dT%H:%M:%S"),
         "kW_Import": kw_import,
         "Voltage": voltage
     })
