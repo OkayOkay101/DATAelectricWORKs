@@ -11,7 +11,7 @@ def main():
         raise SystemExit('No tracked Python sources found')
     for path in paths:
         ast.parse(path.read_bytes(), filename=str(path))
-    print(f'Syntax passed: {len(paths)} Python files. Functional tests are not yet configured.')
+    print(f'Syntax passed: {len(paths)} Python files.')
 
 
 if __name__ == '__main__':
