@@ -281,6 +281,38 @@ class TestDataHandler(unittest.TestCase):
         self.assertIn(GENERIC_LOAD_ERROR_REASON, log_output)
         self.assertNotIn(leaked_data, log_output)
 
+    def test_load_file_csv_failure_logs_redacted_exception(self):
+        import io
+        from data_handler import GENERIC_LOAD_ERROR_REASON, load_file
+
+        leaked_data = "C:\\uploads\\customer-data.csv: confidential row"
+        with patch('pandas.read_csv', return_value=pd.DataFrame([['Clock', 'kW_Import', 'Voltage']])), \
+                patch('data_handler.parse_excel_df', side_effect=ValueError(leaked_data)):
+            with self.assertLogs(level='WARNING') as captured:
+                load_file(io.BytesIO(b"Clock,kW_Import,Voltage\n01/01/2026 00:00,100,220\n"), "csv")
+
+        log_output = "\n".join(captured.output)
+        self.assertIn("ValueError", log_output)
+        self.assertIn(GENERIC_LOAD_ERROR_REASON, log_output)
+        self.assertNotIn(leaked_data, log_output)
+
+    def test_load_file_text_failure_logs_redacted_exception(self):
+        import io
+        from data_handler import GENERIC_LOAD_ERROR_REASON, load_file
+
+        leaked_data = "C:\\uploads\\customer-data.txt: confidential row"
+        with patch('pandas.read_csv', return_value=pd.DataFrame([['Clock', 'kW_Import', 'Voltage']])), \
+                patch('data_handler.parse_excel_df', return_value=None), \
+                patch('data_handler.parse_text_lines', side_effect=ValueError(leaked_data)):
+            with self.assertLogs(level='WARNING') as captured:
+                with self.assertRaises(ValueError):
+                    load_file(io.BytesIO(b"unstructured uploaded content\n"), "txt")
+
+        log_output = "\n".join(captured.output)
+        self.assertIn("ValueError", log_output)
+        self.assertIn(GENERIC_LOAD_ERROR_REASON, log_output)
+        self.assertNotIn(leaked_data, log_output)
+
     def test_load_file_rejects_xlsx_decompression_bomb(self):
         import io
         import struct
