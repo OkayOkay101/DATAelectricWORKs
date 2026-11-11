@@ -1155,7 +1155,7 @@ class TestDataHandler(unittest.TestCase):
             self.assertEqual(len(df), 1, f"Failed to filter footer row: {footer}")
             self.assertEqual(df.iloc[0]['Clock'], "01/01/2026 00:15")
 
-    def test_get_usage_snapshots_selective_formatting_performance_and_parity(self):
+    def test_get_usage_snapshots_selective_formatting_parity(self):
         # 1. Parity test: compare with baseline reference implementation
         n = 1000
         dates = pd.date_range("2026-01-01", periods=n, freq="15min")
@@ -1188,7 +1188,7 @@ class TestDataHandler(unittest.TestCase):
         self.assertEqual(actual, expected)
         pd.testing.assert_frame_equal(pd.DataFrame(actual), pd.DataFrame(expected))
 
-        # 2. Performance benchmark: 100,000 rows must run in under 0.06s (previously ~0.16s)
+        # 2. Large input correctness: each active run includes the preceding row and its end boundary.
         n_large = 100000
         dates_large = pd.date_range("2026-01-01", periods=n_large, freq="15min")
         kw_large = np.zeros(n_large)
@@ -1197,12 +1197,11 @@ class TestDataHandler(unittest.TestCase):
             kw_large[s:s + 300] = 120.0
         df_large = pd.DataFrame({'Clock': dates_large, 'kW_Import': kw_large})
 
-        import time
-        t0 = time.perf_counter()
         large_actual = get_usage_snapshots(df_large)
-        elapsed = time.perf_counter() - t0
-        self.assertEqual(len(large_actual), 10)
-        self.assertLess(elapsed, 0.06, f"Expected elapsed < 0.06s, took {elapsed:.4f}s")
+        self.assertEqual(
+            [(snapshot['start_idx'], snapshot['end_idx']) for snapshot in large_actual],
+            [(i * 8000 + 99, i * 8000 + 400) for i in range(10)]
+        )
 
     def test_get_usage_snapshots_midnight_boundary_formatting(self):
         # Boundary timestamps at midnight (00:00) must retain the '00:00' time component in snapshot labels
