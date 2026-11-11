@@ -33,7 +33,10 @@ python -m venv venv
   source venv/bin/activate
   ```
 
-หลังจาก Activate แล้ว คุณสามารถติดตั้งไลบรารีด้วย `pip install`
+หลังจาก Activate แล้ว ติดตั้งไลบรารีที่จำเป็นด้วยคำสั่ง:
+```bash
+pip install pandas numpy plotly streamlit openpyxl xlrd xlwt
+```
 
 ## 3. การเปิดใช้งานโปรแกรม (Starting the App)
 
