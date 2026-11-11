@@ -21,6 +21,14 @@ class RunnerTests(unittest.TestCase):
         source = 'def plus(a, b):\n return a + b\n'
         self.assertTrue(any('a - b' in value for value in runner.mutations(source)))
 
+    def test_package_import_resolves_to_package_initializer(self):
+        with tempfile.TemporaryDirectory() as folder:
+            package = Path(folder) / 'application' / 'models'
+            package.mkdir(parents=True)
+            (package / '__init__.py').write_text('')
+            self.assertEqual(runner.application_module_path(Path(folder), 'application.models'),
+                             'application/models/__init__.py')
+
     def test_import_error_does_not_prove_red(self):
         green = {'exit_code': 0, 'test_count': 1, 'test_ids': ['test'], 'skipped_count': 0, 'errors': 0}
         red = {**green, 'exit_code': 1, 'errors': 1, 'failures': 0}
