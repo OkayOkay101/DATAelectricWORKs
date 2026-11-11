@@ -11,7 +11,7 @@ python -m pip install -r requirements-test.txt
 python -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-CI ชื่อ `python-functional` รันบน push/pull_request โดยไม่รับ secrets ของ Controller และไม่ส่งต่อ checkout credentials ให้โค้ดทดสอบ ใช้ unittest ของ Python จึงไม่เพิ่ม test framework ใหม่ แพ็กเกจใน requirements-test.txt เป็นสภาพแวดล้อมทดสอบ ไม่ได้ล็อก dependencies ทั้งแอป
+ขณะนี้ repo ยังไม่มี workflow CI ชื่อ `python-functional` ที่รันบน push/pull_request คำสั่งด้านบนใช้รันทดสอบในเครื่องได้ หากเพิ่ม CI ภายหลัง ควรแยกจาก secrets ของ Controller และไม่ส่งต่อ checkout credentials ให้โค้ดทดสอบ ใช้ unittest ของ Python จึงไม่เพิ่ม test framework ใหม่ แพ็กเกจใน requirements-test.txt เป็นสภาพแวดล้อมทดสอบ ไม่ได้ล็อก dependencies ทั้งแอป
 
 ## สิ่งที่ตรวจ
 
@@ -39,4 +39,4 @@ CI ชื่อ `python-functional` รันบน push/pull_request โดย�
 
 การตรวจพบ framework หรือ CI สีเขียวอย่างเดียวไม่เพียงพอให้เปิดความพร้อมอัตโนมัติ ต้องตรวจว่าชุดทดสอบตรงกับพฤติกรรมที่เจ้าของต้องการจริง และ jobs ไม่ข้าม tests
 
-สำหรับ repo นี้หลัง merge PR ชุดทดสอบและยืนยัน CI บน main แล้ว จึงพิจารณาตั้งคำสั่งด้านบน ใช้ `python-functional` จาก GitHub Actions และ scope `tou_analyzer.py`, `tests/**` สำหรับงานบั๊กดังกล่าว โดยไม่ขยายไป workflow หรือ controller ของระบบ
+สำหรับ repo นี้ควรตั้งค่า workflow และยืนยันว่า tests ทำงานบน main ก่อน จึงพิจารณาเปิดใช้ Functional Test โดยใช้คำสั่งด้านบนและ scope `tou_analyzer.py`, `tests/**` สำหรับงานบั๊กดังกล่าว โดยไม่ขยายไป workflow หรือ controller ของระบบ
