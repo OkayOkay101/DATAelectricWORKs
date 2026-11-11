@@ -1326,6 +1326,14 @@ def sort_and_deduplicate_by_clock(df):
     )
 
 
+def shift_dataframe_clock(df, shift_minutes):
+    """Shift Clock values and keep Date aligned with the shifted timestamps."""
+    shifted_df = df.copy()
+    shifted_df['Clock'] = shifted_df['Clock'] + pd.to_timedelta(shift_minutes, unit='m')
+    shifted_df['Date'] = shifted_df['Clock'].dt.normalize()
+    return shifted_df
+
+
 def get_usage_snapshots(df):
     if df is None or df.empty:
         return []
