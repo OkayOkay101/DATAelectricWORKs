@@ -88,7 +88,7 @@ with st.sidebar:
     st.header("📊 3. ตั้งค่าการแสดงผล")
     chart_type = st.sidebar.radio("เลือกรูปแบบกราฟ:", ["กราฟแท่ง (Bar)", "กราฟเส้น (Line)"])
     is_bar = "แท่ง" in chart_type
-    sensitivity = st.slider("ความไวตรวจจับ Anomaly (ไฟกระชาก)", 1.0, 5.0, 2.5, 0.5)
+    sensitivity = st.slider("ความไวตรวจจับ Anomaly (โหลดสูง/ไฟตก)", 1.0, 5.0, 2.5, 0.5, help="ปรับเกณฑ์ตรวจจับค่า kW สูงหรือต่ำกว่าช่วงปกติ")
 
 # ==========================================
 # 🖥️ MAIN DASHBOARD AREA
