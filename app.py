@@ -42,7 +42,7 @@ ANOMALY_LOW_SYMBOL = 'triangle-down'
 # ==========================================
 with st.sidebar:
     st.header("📂 1. อัปโหลดข้อมูล")
-    uploaded_files = st.file_uploader("ลากไฟล์ Excel, CSV, TXT ลงที่นี่", type=["csv", "xlsx", "xls", "txt"], accept_multiple_files=True, help="รองรับไฟล์ Load Profile จากการไฟฟ้า และไฟล์จาก Data Logger")
+    uploaded_files = st.file_uploader("ลากไฟล์ Excel, CSV, TXT ลงที่นี่", type=["csv", "xlsx", "xls", "txt"], accept_multiple_files=True, help="รองรับไฟล์ Load Profile จากการไฟฟ้าและ Data Logger; ไม่เกิน 20 ไฟล์ ไฟล์ละ 50 MB และรวมไม่เกิน 200 MB")
     
     st.divider()
     
