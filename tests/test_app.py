@@ -2,6 +2,19 @@ import unittest
 import pandas as pd
 
 class TestApp(unittest.TestCase):
+    def test_electricity_rate_inputs_show_units_in_labels(self):
+        """Each visible tariff input identifies the rate unit."""
+        import os
+        from streamlit.testing.v1 import AppTest
+
+        app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.py')
+        at = AppTest.from_file(app_path, default_timeout=30).run()
+
+        self.assertFalse(at.exception, f"App execution failed: {at.exception}")
+        rate_labels = [item.label for item in at.number_input if "เรท" in item.label]
+        self.assertTrue(rate_labels)
+        self.assertTrue(all("บาท/หน่วย" in label for label in rate_labels), rate_labels)
+
     def test_upload_widget_explains_file_size_and_count_limits(self):
         """ช่องอัปโหลดแจ้งข้อจำกัดตรงกับ validation เพื่อให้ผู้ใช้เตรียมไฟล์ได้ถูกต้อง"""
         import os
