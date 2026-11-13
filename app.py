@@ -52,11 +52,11 @@ with st.sidebar:
     
     with st.expander("💰 ตั้งค่าเรทราคา (บาท/หน่วย)", expanded=True):
         if rate_type == "TOU (Time of Use)":
-            p_rate = st.number_input("เรท On-Peak", value=5.7982, format="%.4f")
-            op_rate = st.number_input("เรท Off-Peak / Holiday", value=2.6369, format="%.4f")
+            p_rate = st.number_input("เรท On-Peak (บาท/หน่วย)", value=5.7982, format="%.4f")
+            op_rate = st.number_input("เรท Off-Peak / Holiday (บาท/หน่วย)", value=2.6369, format="%.4f")
             single_rate = None
         else:
-            single_rate = st.number_input("เรทค่าไฟอัตราเดียว", value=4.5000, format="%.4f")
+            single_rate = st.number_input("เรทค่าไฟอัตราเดียว (บาท/หน่วย)", value=4.5000, format="%.4f")
             p_rate = single_rate
             op_rate = single_rate
 
