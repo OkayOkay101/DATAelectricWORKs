@@ -76,6 +76,39 @@ class TestDataHandler(unittest.TestCase):
         self.assertEqual(df.iloc[0]['Clock'], "01/01/2023 00:15")
         self.assertEqual(df.iloc[0]['kW_Import'], 200)
 
+    def test_parse_excel_df_date_as_clock_reuses_unique_values_for_time_check(self):
+        df_with_time = pd.DataFrame([
+            ["Date", "Import kW"],
+            ["01/01/2026 00:15", "100.0"],
+            ["01/01/2026 00:30", "110.0"],
+        ])
+        df_date_only = pd.DataFrame([
+            ["Date", "Import kW"],
+            ["01/01/2026", "100.0"],
+            ["02/01/2026", "110.0"],
+        ])
+
+        original_astype = pd.Series.astype
+        checked_date_series = []
+
+        def track_date_string_conversion(series, dtype, *args, **kwargs):
+            if series.name == "date" and dtype is str:
+                checked_date_series.append(series.name)
+            return original_astype(series, dtype, *args, **kwargs)
+
+        with patch.object(pd.Series, "astype", track_date_string_conversion):
+            actual = parse_excel_df(df_with_time)
+            rejected_date_only = parse_excel_df(df_date_only)
+
+        expected = pd.DataFrame({
+            "Clock": ["01/01/2026 00:15", "01/01/2026 00:30"],
+            "kW_Import": ["100.0", "110.0"],
+            "Voltage": 220.0,
+        })
+        pd.testing.assert_frame_equal(actual, expected)
+        self.assertIsNone(rejected_date_only)
+        self.assertEqual(checked_date_series, [])
+
     def test_parse_excel_df_non_string_headers(self):
         # DataFrame with integer or float headers in metadata rows
         df_raw = pd.DataFrame([
