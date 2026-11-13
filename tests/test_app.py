@@ -2,6 +2,19 @@ import unittest
 import pandas as pd
 
 class TestApp(unittest.TestCase):
+    def test_anomaly_sensitivity_explains_high_and_low_load_detection(self):
+        """ความไวต้องอธิบายว่าครอบคลุมทั้งโหลดสูงและไฟตก"""
+        import os
+        from streamlit.testing.v1 import AppTest
+
+        app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.py')
+        at = AppTest.from_file(app_path, default_timeout=30).run()
+
+        self.assertFalse(at.exception, f"App execution failed: {at.exception}")
+        control = next(item for item in at.slider if "Anomaly" in item.label)
+        self.assertIn("โหลดสูง/ไฟตก", control.label)
+        self.assertIn("ค่า kW สูงหรือต่ำกว่าช่วงปกติ", control.help)
+
     def test_electricity_rate_inputs_show_units_in_labels(self):
         """Each visible tariff input identifies the rate unit."""
         import os
