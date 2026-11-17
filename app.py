@@ -591,21 +591,17 @@ with tab2:
         st.markdown("##### 🧾 สรุปสัดส่วนตามช่วงเวลา (Period Breakdown)")
         summary_daily = (
             day_df.groupby('Period_Detail')
-            .agg(kW_Import=('kW_Import', 'max'), kWh_15min=('kWh_15min', 'sum'), Cost_THB=('Cost_THB', 'sum'))
+            .agg(kW_Import=('kW_Import', 'sum'), kWh_15min=('kWh_15min', 'sum'), Cost_THB=('Cost_THB', 'sum'))
             .reset_index()
         )
-        summary_daily.columns = ['สถานะ (Period)', 'โหลดสูงสุด (kW)', 'พลังงานรวม (kWh)', 'ค่าไฟฟ้า (บาท)']
+        summary_daily.columns = ['สถานะ (Period)', 'โหลดรวม (kW)', 'พลังงานรวม (kWh)', 'ค่าไฟฟ้า (บาท)']
         st.dataframe(
             summary_daily,
             width='stretch',
             hide_index=True,
             column_config={
                 "สถานะ (Period)": st.column_config.TextColumn("สถานะ (Period)"),
-                "โหลดสูงสุด (kW)": st.column_config.NumberColumn(
-                    "โหลดสูงสุด (kW)",
-                    help="กำลังไฟฟ้าสูงสุดของช่วงเวลานี้ (ไม่ใช่ผลรวม kW ของทุกช่วง)",
-                    format="%.2f"
-                ),
+                "โหลดรวม (kW)": st.column_config.NumberColumn("โหลดรวม (kW)", format="%.2f"),
                 "พลังงานรวม (kWh)": st.column_config.NumberColumn("พลังงานรวม (kWh)", format="%.2f"),
                 "ค่าไฟฟ้า (บาท)": st.column_config.NumberColumn("ค่าไฟฟ้า (บาท)", format="฿ %.2f"),
             }
