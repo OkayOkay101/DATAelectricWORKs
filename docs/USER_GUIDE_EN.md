@@ -111,8 +111,8 @@ Period colors in the charts:
 | Color | Meaning |
 | :--- | :--- |
 | 🟧 Orange | On-Peak (the configured hours on working days) |
-| 🟩 Green | Off-Peak (nights, or Saturday and Sunday) |
-| 🟨 Yellow | Holiday (a date in the holiday list) |
+| 🟩 Green | Off-Peak (weekday hours outside On-Peak) |
+| 🟨 Yellow | Holiday (a date in the holiday list, or Saturday and Sunday) |
 
 ### Tab 2: Daily Insights
 
@@ -163,8 +163,8 @@ The simulator in this tab works the same way as Tab 3: enter the minutes to shif
 | **kWh (kilowatt-hour)** | Energy used over a period. The app calculates each 15-minute interval as kW ÷ 4, because 15 minutes is 0.25 hours. |
 | **TOU (Time of Use)** | A tariff with different rates for different time periods. |
 | **On-Peak** | The period with the highest configured rate, usually weekday daytime hours. |
-| **Off-Peak** | The period with the lower rate: outside On-Peak hours and on Saturday and Sunday. |
-| **Holiday** | A public holiday listed in the holiday list. It is charged at the Off-Peak / Holiday rate for the whole day. |
+| **Off-Peak** | The period with the lower rate: weekday hours outside On-Peak. |
+| **Holiday** | A public holiday listed in the holiday list, and also Saturday and Sunday. These days are charged at the Off-Peak / Holiday rate for the whole day. |
 | **Anomaly** | A value much higher or lower than normal. The app calculates it from the mean and standard deviation of the data. You can adjust sensitivity in the sidebar. |
 
 ---
