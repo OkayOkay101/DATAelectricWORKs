@@ -1,5 +1,7 @@
 # User Guide: Load Profile & TOU Simulator
 
+> 🇹🇭 ภาษาไทย: [USER_GUIDE_TH.md](USER_GUIDE_TH.md)
+
 This guide is for new users. It explains what the app can do, what you need before you start, how to use it step by step, and what each screen shows.
 
 > If the app is not installed yet, start with the [Quickstart Guide](GETTING_STARTED_TH.md) (Thai).
