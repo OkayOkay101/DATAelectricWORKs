@@ -18,7 +18,7 @@ The app takes **Load Profile** files (electricity usage recorded over time, usua
 - **Detect anomalies**, such as load above normal or unusually low load (sags).
 - **Simulate shifting usage in time**, for example moving work out of the On-Peak period, and see how the cost changes.
 - **Calculate cost** under either **TOU** (Time of Use: different rates by time period) or **Single Rate** tariffs.
-- **Download results** as CSV or Excel files.
+- **Download results** as CSV files.
 
 The app runs in your web browser on your own computer. Your data is not sent to any other service.
 
@@ -27,7 +27,7 @@ The app runs in your web browser on your own computer. Your data is not sent to 
 ## 2. What You Need
 
 1. **An electricity usage file** with a time column and a power (kW) column. Supported formats: `.csv`, `.txt`, `.xlsx`, `.xls`.
-   - If you do not have a real file yet, download the sample template from the "Download sample template (.csv)" button on the welcome screen.
+   - If you do not have a real file yet, download the sample template from the "📥 ดาวน์โหลดไฟล์ตัวอย่างแม่แบบ (.csv)" button (Download sample template) on the welcome screen.
 2. **The app installed** by following the [Quickstart Guide](GETTING_STARTED_TH.md) (Thai).
 3. **The app started** with `streamlit run app.py`. Your browser opens the app automatically.
 
@@ -66,25 +66,25 @@ The screen has two main areas.
 
 1. In the sidebar, under **1. Upload data**, drag your files in or click to select them.
 2. If you upload several files, the app combines them automatically.
-3. If a file cannot be read, the app shows a "⚠️ Skipped file..." message with the reason and continues with the files that can be read.
-4. When the upload succeeds, you see "✅ Analysis successful", and the date and time range of the data appears below it.
+3. If a file cannot be read, the app shows a "⚠️ ข้ามไฟล์ที่อ่านไม่ได้" (Skipped unreadable files) message with the reason and continues with the files that can be read.
+4. When the upload succeeds, you see "✅ วิเคราะห์ข้อมูลสำเร็จ" (Analysis successful), and the date and time range of the data appears below it.
 
 ### Step 2: Set Up Billing
 
 1. Choose the **tariff type**.
    - **TOU (Time of Use):** the rate depends on the time period. Enter both the On-Peak rate and the Off-Peak / Holiday rate.
    - **Single Rate:** the same rate applies at all times. Enter one rate.
-2. Check the rates under "Rate settings (THB per unit)" against your electricity bill. The default values are examples only.
-3. Set the **On-Peak** hours under "On-Peak time settings". The default is 09:00 to 22:00.
+2. Check the rates under "ตั้งค่าเรทราคา (บาท/หน่วย)" (Rate settings, THB per unit) against your electricity bill. The default values are examples only.
+3. Set the **On-Peak** hours under "ตั้งค่าเวลา On-Peak" (On-Peak time settings). The default is 09:00 to 22:00.
    - If the start and end times are the same, the app charges no On-Peak rate at all.
    - If the end time is earlier than the start time, the On-Peak period crosses midnight.
-4. Check the **holiday list** under "Public holiday settings". Enter dates as `YYYY-MM-DD`, separated by commas. Days in the list are charged at the Off-Peak / Holiday rate for the whole day.
+4. Check the **holiday list** under "ตั้งค่าวันหยุดนักขัตฤกษ์" (Public holiday settings). Enter dates as `YYYY-MM-DD`, separated by commas. Days in the list are charged at the Off-Peak / Holiday rate for the whole day.
    - Holiday entries that are malformed or not real dates are ignored.
    - The default list covers the current year. To use another year, edit the list yourself.
 
 ### Step 3: Choose a Period Filter (if available)
 
-Under the data date range, a **"Filter by time period"** section appears with a selector for the machine operating cycle (snapshot). If the data contains several operating cycles, choose the one you want to view. Every tab then calculates only for that period.
+Under the data date range, a filter section labeled **"🔍 กรองช่วงเวลา"** (Filter by time period) appears with a selector for the machine operating cycle (snapshot). If the data contains several operating cycles, choose the one you want to view. Every tab then calculates only for that period.
 
 ### Step 4: Review the Results
 
@@ -116,7 +116,7 @@ Period colors in the charts:
 
 ### Tab 2: Daily Insights
 
-- Pick a day in the **"Select a date to inspect"** box.
+- Pick a day in the **"📅 เลือกวันที่ต้องการเจาะลึก"** (Select a date to inspect) box.
 - See summary cards for that day and a 15-minute chart with anomaly markers.
 - View a 15-minute data table and download that day's data.
 - If no dates are available, the app shows a message that no date data was found.
