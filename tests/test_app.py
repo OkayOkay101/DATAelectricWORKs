@@ -127,8 +127,8 @@ class TestApp(unittest.TestCase):
         self.assertEqual(shifted.iloc[0]['Clock'], pd.Timestamp('2024-01-02 00:30:00'))
         self.assertEqual(shifted.iloc[0]['Date'], pd.Timestamp('2024-01-02'))
 
-    def test_load_kw_is_reported_as_peak_not_interval_sum(self):
-        """'โหลด' ต้องเป็นค่า kW สูงสุด ไม่ใช่ผลบวก kW ของทุกช่วงเวลา (ซึ่งไม่มีความหมาย)"""
+    def test_period_table_sums_kw_and_summary_cards_show_peak(self):
+        """ตารางสรุปตามช่วงเวลาต้องเป็นผลรวม kW ส่วนการ์ดสรุปแท็บ 4 ต้องแสดงค่า Peak"""
         import sys
         mock_st = None
         if 'streamlit' in sys.modules and not hasattr(sys.modules['streamlit'], '__path__'):
@@ -162,9 +162,9 @@ class TestApp(unittest.TestCase):
             self.assertEqual(metrics["🔥 โหลดสูงสุด (Peak)"], "160.00 kW")
 
             period_table = at.dataframe[1].value
-            self.assertIn("โหลดสูงสุด (kW)", period_table.columns)
-            self.assertNotIn("โหลดรวม (kW)", period_table.columns)
-            self.assertEqual(float(period_table["โหลดสูงสุด (kW)"].max()), 160.0)
+            self.assertIn("โหลดรวม (kW)", period_table.columns)
+            self.assertNotIn("โหลดสูงสุด (kW)", period_table.columns)
+            self.assertEqual(float(period_table["โหลดรวม (kW)"].sum()), 460.0)
 
             next(ni for ni in at.number_input if "ใส่เวลาที่เลื่อน" in ni.label).set_value(30).run()
             self.assertFalse(at.exception, f"App execution failed after simulation: {at.exception}")
