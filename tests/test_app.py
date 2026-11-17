@@ -234,6 +234,10 @@ class TestApp(unittest.TestCase):
 
             # Check for selectboxes or radio buttons to show the UI has responded
             self.assertTrue(len(at.selectbox) > 0, "No selectboxes found after file upload")
+            self.assertTrue(
+                any("ช่วงข้อมูลเปรียบเทียบกราฟ" in item.label for item in at.selectbox),
+                "Expected the time-shift selector to describe the comparison data range",
+            )
             self.assertTrue(len(at.radio) > 0, "No radio buttons found after file upload")
 
             # Verify Tab 1 (Overview) executive summary metrics
@@ -808,7 +812,7 @@ class TestApp(unittest.TestCase):
             self.assertNotIn('⚡ พลังงานช่วง On-Peak', metrics, 'On-Peak metric must not be displayed under Single Rate')
 
             # 4. Check Thai day name in chart title when selecting specific date
-            shift_date_selector = next(sb for sb in at.selectbox if 'เลือกรูปแบบการเปรียบเทียบกราฟ' in sb.label)
+            shift_date_selector = next(sb for sb in at.selectbox if 'ช่วงข้อมูลเปรียบเทียบกราฟ' in sb.label)
             shift_date_selector.set_value(datetime.date(2026, 1, 5)).run()
             self.assertFalse(at.exception, f'App execution failed on date selector: {at.exception}')
 
@@ -1004,7 +1008,7 @@ class TestApp(unittest.TestCase):
             self.assertIn('บาท/หน่วย', tab3_captions_single[0])
 
             # 3. Switch to specific date
-            shift_date_selector = next(sb for sb in at.selectbox if 'เลือกรูปแบบการเปรียบเทียบกราฟ' in sb.label)
+            shift_date_selector = next(sb for sb in at.selectbox if 'ช่วงข้อมูลเปรียบเทียบกราฟ' in sb.label)
             shift_date_selector.set_value(datetime.date(2026, 1, 5)).run()
             self.assertFalse(at.exception, f'App execution failed on date selector switch: {at.exception}')
 

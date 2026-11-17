@@ -705,7 +705,7 @@ with tab3:
             )
         with col_s2:
             dates_for_shift = ["ดูทั้งหมด (ตั้งแต่ต้นจนจบ)"] + [pd.Timestamp(d).date() for d in sorted(df_display['Date'].unique())]
-            view_date = st.selectbox("📅 เลือกรูปแบบการเปรียบเทียบกราฟ", dates_for_shift, key="shift_date_selector")
+            view_date = st.selectbox("📅 เลือกช่วงข้อมูลเปรียบเทียบกราฟ", dates_for_shift, key="shift_date_selector")
     
     df_new = df_display.copy()
     df_new['Original_Clock'] = df_new['Clock'] 
