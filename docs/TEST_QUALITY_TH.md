@@ -2,7 +2,7 @@
 
 ชุดนี้เป็น adapter รุ่นแรกสำหรับ Python 3.12 / unittest เท่านั้น ไม่เปิดใช้กับ repo อื่นโดยอัตโนมัติ
 เจ้าของต้องตรวจ PR นี้ก่อน merge แล้วตั้ง quality profile ใน Controller โดยตรึง workflow ID,
-revision, blob SHA ของ workflow และ `.github/quality/{runner.py,phase.py,profile.json}` รวมชื่อ check
+revision, blob SHA ของ workflow และ `.github/quality/runner.py`, `.github/quality/phase.py`, และ `.github/quality/profile.json` รวมชื่อ check
 `jules-quality` และ GitHub Actions App ID จากหลักฐานจริง ห้ามใช้ค่า placeholder เปิดระบบ
 
 Controller เรียก workflow ผ่าน tag ที่ตรึง revision บน default branch ไม่ใช้ workflow/harness จาก PR เป้าหมาย
@@ -39,6 +39,11 @@ static screening, red/green และ mutation sensitivity เป็นหลั
 การตรึง wrapper/check provenance และการตรวจ PR ของเจ้าของยังจำเป็น
 ถ้า framework/import/layout ไม่รองรับ หรือ scope ไม่มีไฟล์ tests ให้ BLOCKED เฉพาะงาน ไม่ขยาย scope/dependencies เอง
 
-รัน `python -m unittest discover -s tests -p test_quality_runner.py -v` บน GitHub CI ที่มี Docker ก่อนเปิด profile
+ก่อนเปิด profile ให้รันคำสั่งนี้บน GitHub CI ที่มี Docker:
+
+```sh
+python -m unittest discover -s tests -p test_quality_runner.py -v
+```
+
 เครื่อง local ที่ไม่มี Docker จะ skip การตรวจ container จริง ต้องรายงานเป็น “ยังไม่ได้ทดสอบ container”
 ห้ามใช้ผล mock/static หรือ selftest ที่ skip แทนผล container จริง และยังต้องขออนุมัติ merge/เปิดใช้แยกต่างหาก

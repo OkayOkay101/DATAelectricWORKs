@@ -36,35 +36,19 @@ streamlit run app.py
 
 To generate sample data, run `python generate_mock_data.py`. This creates files in `mock_data/`.
 
-## Run the tests
-
-```bash
-pip install -r requirements-test.txt
-python -m unittest discover -s tests -p "test_*.py"
-```
-
 ## Documentation
+
+For developers (tests, CI, Windows build, project layout), see the [Developer Guide](docs/DEVELOPMENT_EN.md).
 
 | Document | Language |
 | :--- | :--- |
 | [User Guide](docs/USER_GUIDE_EN.md) / [คู่มือผู้ใช้งาน](docs/USER_GUIDE_TH.md) | EN / TH |
-| [Quickstart Guide](docs/GETTING_STARTED_TH.md) | TH |
-| [Input Formats](docs/INPUT_FORMATS_TH.md) | TH |
-| [Troubleshooting](docs/TROUBLESHOOTING_TH.md) | TH |
-| [Functional Tests](docs/FUNCTIONAL_TESTS_TH.md) | TH |
-| [Test Quality](docs/TEST_QUALITY_TH.md) | TH |
-
-## Project layout
-
-| Path | Purpose |
-| :--- | :--- |
-| `app.py` | Streamlit user interface |
-| `data_handler.py` | File upload validation, parsing, and preprocessing |
-| `tou_analyzer.py` | TOU period assignment, cost, and anomaly detection |
-| `generate_mock_data.py` | Generates sample data in `mock_data/` |
-| `run_main.py` | Launcher that starts the app with Streamlit |
-| `tests/` | Unit tests |
-| `docs/` | Documentation |
+| [Quickstart Guide](docs/GETTING_STARTED_EN.md) / [คู่มือเริ่มต้นใช้งานอย่างรวดเร็ว](docs/GETTING_STARTED_TH.md) | EN / TH |
+| [Input Formats](docs/INPUT_FORMATS_EN.md) / [รูปแบบข้อมูลนำเข้า](docs/INPUT_FORMATS_TH.md) | EN / TH |
+| [Troubleshooting](docs/TROUBLESHOOTING_EN.md) / [แก้ปัญหาการใช้งาน](docs/TROUBLESHOOTING_TH.md) | EN / TH |
+| [Developer Guide](docs/DEVELOPMENT_EN.md) / [คู่มือนักพัฒนา](docs/DEVELOPMENT_TH.md) | EN / TH |
+| [Functional Tests](docs/FUNCTIONAL_TESTS_EN.md) / [การทดสอบเชิงฟังก์ชัน](docs/FUNCTIONAL_TESTS_TH.md) | EN / TH |
+| [Test Quality](docs/TEST_QUALITY_EN.md) / [คุณภาพของการทดสอบ](docs/TEST_QUALITY_TH.md) | EN / TH |
 
 ## License
 

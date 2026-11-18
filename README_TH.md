@@ -36,35 +36,19 @@ streamlit run app.py
 
 ต้องการข้อมูลตัวอย่าง ให้รัน `python generate_mock_data.py` ไฟล์จะถูกสร้างในโฟลเดอร์ `mock_data/`
 
-## รันการทดสอบ
-
-```bash
-pip install -r requirements-test.txt
-python -m unittest discover -s tests -p "test_*.py"
-```
-
 ## เอกสารประกอบ
+
+สำหรับนักพัฒนา (การทดสอบ CI การ build สำหรับ Windows และโครงสร้างโปรเจกต์) ดู [คู่มือนักพัฒนา](docs/DEVELOPMENT_TH.md)
 
 | เอกสาร | ภาษา |
 | :--- | :--- |
 | [คู่มือผู้ใช้งาน](docs/USER_GUIDE_TH.md) / [User Guide](docs/USER_GUIDE_EN.md) | TH / EN |
-| [คู่มือเริ่มต้นใช้งานอย่างรวดเร็ว](docs/GETTING_STARTED_TH.md) | TH |
-| [รูปแบบข้อมูลนำเข้า](docs/INPUT_FORMATS_TH.md) | TH |
-| [แก้ปัญหาการใช้งาน](docs/TROUBLESHOOTING_TH.md) | TH |
-| [การทดสอบเชิงฟังก์ชัน](docs/FUNCTIONAL_TESTS_TH.md) | TH |
-| [คุณภาพของการทดสอบ](docs/TEST_QUALITY_TH.md) | TH |
-
-## โครงสร้างโปรเจกต์
-
-| พาธ | หน้าที่ |
-| :--- | :--- |
-| `app.py` | หน้าจอ Streamlit |
-| `data_handler.py` | ตรวจสอบไฟล์ที่อัปโหลด อ่านข้อมูล และเตรียมข้อมูล |
-| `tou_analyzer.py` | กำหนดช่วง TOU คำนวณค่าไฟ และตรวจจับจุดผิดปกติ |
-| `generate_mock_data.py` | สร้างข้อมูลตัวอย่างใน `mock_data/` |
-| `run_main.py` | ตัวเปิดโปรแกรมที่เรียก Streamlit |
-| `tests/` | การทดสอบหน่วย (unit tests) |
-| `docs/` | เอกสารประกอบ |
+| [คู่มือเริ่มต้นใช้งานอย่างรวดเร็ว](docs/GETTING_STARTED_TH.md) / [Quickstart Guide](docs/GETTING_STARTED_EN.md) | TH / EN |
+| [รูปแบบข้อมูลนำเข้า](docs/INPUT_FORMATS_TH.md) / [Input Formats](docs/INPUT_FORMATS_EN.md) | TH / EN |
+| [แก้ปัญหาการใช้งาน](docs/TROUBLESHOOTING_TH.md) / [Troubleshooting](docs/TROUBLESHOOTING_EN.md) | TH / EN |
+| [คู่มือนักพัฒนา](docs/DEVELOPMENT_TH.md) / [Developer Guide](docs/DEVELOPMENT_EN.md) | TH / EN |
+| [การทดสอบเชิงฟังก์ชัน](docs/FUNCTIONAL_TESTS_TH.md) / [Functional Tests](docs/FUNCTIONAL_TESTS_EN.md) | TH / EN |
+| [คุณภาพของการทดสอบ](docs/TEST_QUALITY_TH.md) / [Test Quality](docs/TEST_QUALITY_EN.md) | TH / EN |
 
 ## ใบอนุญาต
 
